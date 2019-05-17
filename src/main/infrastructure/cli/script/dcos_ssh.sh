@@ -4,15 +4,13 @@
 set -o errexit
 #set -o pipefail
 
-# Debug is disabled by default.
+# Default paramentes.
 DEBUG=false
 DEBUG_OPT=
-
-# Default paramentes.
 SSH_USER=centos
 SSH_OPTIONS=--master-proxy
 
-# For each argument.
+# For each parameter.
 while :; do
 	case ${1} in
 		
@@ -47,7 +45,7 @@ set -o nounset
 # Enables interruption signal handling.
 trap - INT TERM
 
-# Print arguments if on debug mode.
+# Print parameters if on debug mode.
 ${DEBUG} && echo  "Running 'dcos_ssh'"
 ${DEBUG} && echo  "SSH_USER=${SSH_USER}"
 ${DEBUG} && echo  "SSH_OPTIONS=${SSH_OPTIONS}"

@@ -61,8 +61,14 @@ RUN mkdir /project
 WORKDIR /project
 VOLUME /project
 
-# Copies the docker entrypoint.
-COPY script/run.sh /usr/bin/init
+# Copies the dcos scripts.
+RUN mkdir -p /opt/dcos-script
+COPY script /opt/dcos-script
+RUN ln -s /opt/dcos-script/*.sh /usr/bin && \
+	for f in /usr/bin/dcos*.sh; \
+	do \
+		mv -- "$f" "${f%.sh}"; \
+	done
 
 # Entrypoint.
-ENTRYPOINT [ "init" ]
+ENTRYPOINT [ "dcos_setup" ]
