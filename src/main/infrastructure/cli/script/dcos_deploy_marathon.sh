@@ -4,15 +4,13 @@
 set -o errexit
 #set -o pipefail
 
-# Debug is disabled by default.
+# Default paramentes.
 DEBUG=false
 DEBUG_OPT=
-
-# Default paramentes.
 WORK_DIRECTORY=/project
 DCOS_TEMP_SERVICE_FILE=${WORK_DIRECTORY}/temp-service.json
 
-# For each argument.
+# For each parameter.
 while :; do
 	case ${1} in
 		
@@ -43,7 +41,7 @@ set -o nounset
 # Enables interruption signal handling.
 trap - INT TERM
 
-# Print arguments if on debug mode.
+# Print parameters if on debug mode.
 ${DEBUG} && echo "Running 'dcos_deploy_marathon'"
 ${DEBUG} && cat ${DCOS_TEMP_SERVICE_FILE}
 
