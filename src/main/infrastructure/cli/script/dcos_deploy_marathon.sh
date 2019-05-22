@@ -67,7 +67,7 @@ else
 	DEPLOYMENT_ID="`dcos marathon app add < ${DCOS_TEMP_SERVICE_FILE}`"
 	DEPLOYMENT_ID=${DEPLOYMENT_ID#Created deployment *}
 	${DEBUG} && echo "Watching deployment ${DEPLOYMENT_ID}"
-	dcos marathon deployment watch --max-count=12 --interval=15 ${DEPLOYMENT_ID}
+	dcos marathon deployment watch --max-count=36 --interval=5 ${DEPLOYMENT_ID}
 fi
 
 
