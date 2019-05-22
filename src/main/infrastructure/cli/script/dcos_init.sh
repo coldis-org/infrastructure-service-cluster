@@ -42,7 +42,7 @@ trap - INT TERM
 ${DEBUG} && echo  "Running 'dcos_init'"
 
 # Sets up the cluster.
-echo ${CLUSTER_KEY} | dcos cluster setup http://${CLUSTER_IP}
+echo ${CLUSTER_KEY} | dcos cluster setup http://${CLUSTER_ADDRESS}
 echo "DCOS setup finished"
 
 # Executes the dcos script.
