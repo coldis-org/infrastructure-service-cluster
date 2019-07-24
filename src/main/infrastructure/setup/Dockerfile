@@ -1,4 +1,4 @@
-FROM hashicorp/terraform:0.11.13
+FROM hashicorp/terraform:0.11.14
 
 # Installs CA certificates.
 RUN apk add --no-cache \
@@ -6,7 +6,7 @@ RUN apk add --no-cache \
 
 # Installs docker.
 ENV DOCKER_CHANNEL stable
-ENV DOCKER_VERSION 18.09.4
+ENV DOCKER_VERSION 18.09.6
 RUN set -eux; \
 	\
 # this "case" statement is generated via "update.sh"

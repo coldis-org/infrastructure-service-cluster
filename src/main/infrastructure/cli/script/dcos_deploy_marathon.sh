@@ -8,7 +8,9 @@ set -o errexit
 DEBUG=false
 DEBUG_OPT=
 WORK_DIRECTORY=/project
+DCOS_CONFIG_FILE=dcos_cli.properties
 DCOS_TEMP_SERVICE_FILE=${WORK_DIRECTORY}/temp-service.json
+FORCE=
 
 # For each parameter.
 while :; do
@@ -18,6 +20,11 @@ while :; do
 		--debug)
 			DEBUG=true
 			DEBUG_OPT="--debug"
+			;;
+
+		# If debug should be enabled.
+		-f|--force)
+			FORCE="--force"
 			;;
 
 		# No more options.
@@ -56,10 +63,10 @@ then
 	# Updates the app in the cluster.
 	${DEBUG} && echo "Updating app in the cluster"
 	SERVICE_ID="`jq -r ".id" < ${DCOS_TEMP_SERVICE_FILE}`"
-	DEPLOYMENT_ID="`dcos marathon app update ${SERVICE_ID} < ${DCOS_TEMP_SERVICE_FILE}`"
+	DEPLOYMENT_ID="`dcos marathon app update ${FORCE} ${SERVICE_ID} < ${DCOS_TEMP_SERVICE_FILE}`"
 	DEPLOYMENT_ID=${DEPLOYMENT_ID#Created deployment *}
 	${DEBUG} && echo "Watching deployment ${DEPLOYMENT_ID}"
-	dcos marathon deployment watch --max-count=12 --interval=15 ${DEPLOYMENT_ID}
+	dcos marathon deployment watch --max-count=36 --interval=5 ${DEPLOYMENT_ID}
 # If the application does not exist in the cluster.
 else
 	# Adds the app to the cluster.

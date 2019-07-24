@@ -1,5 +1,5 @@
 # From debian.
-FROM debian:8.11-slim
+FROM debian:10.0
 
 # Sets locale and UTF-8 charset.
 ENV TZ=America/Sao_Paulo
@@ -17,30 +17,26 @@ RUN apt-get update -y && \
 	apt-get clean -y && \
 	rm -rf /var/lib/apt/lists/*
 
-# Installs DCOS CLI.
-RUN [ -d /usr/local/bin ] || sudo mkdir -p /usr/local/bin && \
-	apt-get update -y && \
-	apt-get install -y curl && \
-	curl https://downloads.dcos.io/binaries/cli/linux/x86-64/dcos-1.12/dcos -o dcos && \
-	apt-get remove -y curl && \
-	apt-get autoremove -y && \
-	apt-get clean -y && \
-	rm -rf /var/lib/apt/lists/* && \
-	mv dcos /usr/local/bin && \
-	chmod +x /usr/local/bin/dcos
-	
-# Installs ssh.
+# Installs ssh, jq and curl.
 RUN apt-get update -y && \
-	apt-get install -y ssh && \
+	apt-get install -y ssh jq curl maven unzip && \
 	apt-get clean -y && \
 	rm -rf /var/lib/apt/lists/*
 	
-# Installs jq.
-RUN apt-get update -y && \
-	apt-get install -y jq && \
-	apt-get clean -y && \
-	rm -rf /var/lib/apt/lists/*
-
+# Installs the operational scripts.
+ENV OPS_UTILS_VERSION=0.0.16
+RUN mvn dependency:get -Dartifact=org.coldis.library:script-operational:${OPS_UTILS_VERSION} && \
+	mkdir -p /opt/operational-utils-script && \
+	cd /opt/operational-utils-script && \
+	unzip ${HOME}/.m2/repository/org/coldis/library/script-operational/${OPS_UTILS_VERSION}/script-operational-${OPS_UTILS_VERSION}.jar -d . && \
+	rm -R ${HOME}/.m2 && \
+	chmod -R 755 . && \
+	ln -s /opt/operational-utils-script/utils/script/*.sh /usr/bin && \
+	for FILE in /usr/bin/operational_utils*.sh; \
+	do \
+		mv -- "${FILE}" "${FILE%.sh}"; \
+	done
+	
 # Creates the work dir.
 RUN mkdir /project
 WORKDIR /project
@@ -54,6 +50,17 @@ RUN ln -s /opt/dcos-script/*.sh /usr/bin && \
 	do \
 		mv -- "$f" "${f%.sh}"; \
 	done
+	
+# Installs DCOS CLI.
+ENV DCOS_VERSION=1.13
+RUN dcos_install --version ${DCOS_VERSION}
+
+# Uninstall unused applications.
+RUN apt-get update -y && \
+	apt-get remove -y maven unzip && \
+	apt-get autoremove -y && \
+	apt-get clean -y && \
+	rm -rf /var/lib/apt/lists/*
 
 # Entrypoint.
 ENTRYPOINT [ "dcos_init" ]

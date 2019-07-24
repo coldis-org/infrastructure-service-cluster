@@ -7,7 +7,10 @@ set -o errexit
 # Default paramentes.
 DEBUG=false
 DEBUG_OPT=
-NEXT_CMD=
+WORK_DIRECTORY=/project
+PRIVATE_KEY=
+UID=
+COMMAND=
 
 # For each parameter.
 while :; do
@@ -18,14 +21,39 @@ while :; do
 			DEBUG=true
 			DEBUG_OPT="--debug"
 			;;
-
-		# Other option.
-		?*)
-			NEXT_CMD="${NEXT_CMD} ${1}"
+			
+		# Cluster address.
+		-a|--cluster-address)
+			CLUSTER_ADDRESS=${2}
+			break
 			;;
-
-		# No more options.
+			
+		# Create service account.
+		--create-service-account)
+			CREATE_SERVICE_ACCOUNT=true
+			;;
+			
+		# User id.
+		--uid)
+			UID=${2}
+			shift
+			;;
+		
+		# External user token.
+		--external-user-token)
+			EXTERNAL_USER_TOKEN=${2}
+			shift
+			;;
+		
+		# Private key.
+		--private-key)
+			PRIVATE_KEY=${2}
+			shift
+			;;
+		
+		# Other option.
 		*)
+			COMMAND="${@}"
 			break
 
 	esac 
@@ -39,13 +67,25 @@ set -o nounset
 trap - INT TERM
 
 # Print parameters if on debug mode.
-${DEBUG} && echo  "Running 'dcos_init'"
+${DEBUG} && echo "Running 'dcos_init'"
+${DEBUG} && echo "DEBUG=${DEBUG}"
+${DEBUG} && echo "UID=${UID}"
+${DEBUG} && echo "PRIVATE_KEY=${PRIVATE_KEY}"
+${DEBUG} && echo "EXTERNAL_USER_TOKEN=${EXTERNAL_USER_TOKEN}"
+${DEBUG} && echo "CLUSTER_ADDRESS=${CLUSTER_ADDRESS}"
 
 # Sets up the cluster.
-echo ${CLUSTER_KEY} | dcos cluster setup http://${CLUSTER_ADDRESS}
+if [ "${PRIVATE_KEY}" != "" ]
+then
+	${DEBUG} && echo "Logging in with private key"
+	dcos cluster setup http://${CLUSTER_ADDRESS} --username ${UID} --private-key ${PRIVATE_KEY}
+else
+	${DEBUG} && echo "Logging in with token"
+	echo ${EXTERNAL_USER_TOKEN} | dcos cluster setup http://${CLUSTER_ADDRESS} --provider dcos-oidc-auth0
+fi
 echo "DCOS setup finished"
 
 # Executes the dcos script.
-${DEBUG} && echo  "Running '${NEXT_CMD}'"
-exec ${NEXT_CMD} ${DEBUG_OPT}
+${DEBUG} && echo "Running '${COMMAND}'"
+exec ${COMMAND}
 
