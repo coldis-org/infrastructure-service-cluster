@@ -7,7 +7,7 @@ set -o errexit
 # Default paramentes.
 DEBUG=false
 DEBUG_OPT=
-WORK_DIRECTORY=/project
+WORK_DIRECTORY=.
 
 # For each parameter.
 while :; do

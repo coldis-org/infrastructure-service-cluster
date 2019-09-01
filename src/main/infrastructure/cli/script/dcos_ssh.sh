@@ -7,7 +7,7 @@ set -o errexit
 # Default paramentes.
 DEBUG=false
 DEBUG_OPT=
-WORK_DIRECTORY=/project
+WORK_DIRECTORY=.
 SSH_USER=centos
 SSH_KEY=${WORK_DIRECTORY}/aws_dcos_cluster_key
 DCOS_SSH_ARGUMENTS=
@@ -90,12 +90,12 @@ ${DEBUG} && echo "DCOS_SSH_ARGUMENTS=${DCOS_SSH_ARGUMENTS}"
 ${DEBUG} && echo "SSH_ARGUMENTS=${SSH_ARGUMENTS}"
 ${DEBUG} && echo "IP_ADDRESS=${IP_ADDRESS}"
 ${DEBUG} && echo "COMMAND=${COMMAND}"
-${DEBUG} && echo "STD_IN=`cat ${STD_IN_TEMP_FILE}`"
+${DEBUG} && echo "STD_IN=$(cat ${STD_IN_TEMP_FILE})"
 
 # Configures SSH.
 mkdir -p ~/.ssh
 cp ${SSH_KEY} ~/.ssh/cluster_key
-eval `ssh-agent -s` && \
+eval $(ssh-agent -s) && \
 ssh-add ~/.ssh/cluster_key
 
 # If no IP is given.
@@ -114,20 +114,20 @@ else
 	if [ -z "${STD_IN}" ]
 	then 
 	
-		${DEBUG} && echo "Running 'ssh -oStrictHostKeyChecking=no -i continuous_integration_key \
+		${DEBUG} && echo "Running 'ssh -oStrictHostKeyChecking=no \
 			${SSH_USER}@${IP_ADDRESS} ${SSH_ARGUMENTS} \
 			\"${COMMAND}\"'"
-		ssh -oStrictHostKeyChecking=no -i continuous_integration_key \
+		ssh -oStrictHostKeyChecking=no \
 			${SSH_USER}@${IP_ADDRESS} ${SSH_ARGUMENTS} \
 			"${COMMAND}"
 	
 	# If there is stdin.
 	else 
 	
-		${DEBUG} && echo "Running 'ssh -oStrictHostKeyChecking=no -i continuous_integration_key \
+		${DEBUG} && echo "Running 'ssh -oStrictHostKeyChecking=no \
 			${SSH_USER}@${IP_ADDRESS} ${SSH_ARGUMENTS} \
 			\"${COMMAND}\"' < ${STD_IN_TEMP_FILE}"
-		ssh -oStrictHostKeyChecking=no -i continuous_integration_key \
+		ssh -oStrictHostKeyChecking=no \
 			${SSH_USER}@${IP_ADDRESS} ${SSH_ARGUMENTS} \
 			"${COMMAND}" < ${STD_IN_TEMP_FILE}
 

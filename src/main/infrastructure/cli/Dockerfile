@@ -46,9 +46,9 @@ VOLUME /project
 RUN mkdir -p /opt/dcos-script
 COPY script /opt/dcos-script
 RUN ln -s /opt/dcos-script/*.sh /usr/bin && \
-	for f in /usr/bin/dcos*.sh; \
+	for FILE in /usr/bin/dcos*.sh; \
 	do \
-		mv -- "$f" "${f%.sh}"; \
+		mv -- "${FILE}" "${FILE%.sh}"; \
 	done
 	
 # Installs DCOS CLI.

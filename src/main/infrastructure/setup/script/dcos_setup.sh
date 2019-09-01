@@ -8,14 +8,17 @@ set -o errexit
 DEBUG=false
 DEBUG_OPT=
 RUN_TERRAFORM=true
+CPU_HARD_LIMIT=false
 UPDATE_ZONE_REGION=false
 DO_NOT_UPDATE_SWAP=true
-MASTERS_SWAP=24576
+MASTERS_SWAP=12288
 AGENTS_SWAP=24576
 CONFIGURE_DOCKER=false
 RESTART_AGENTS=false
 RESTART_AGENTS_HARD=false
 STOP_BOOTSTRAP=true
+DESTROY=false
+DESTROY_CONFIRM=false
 
 # For each parameter.
 while :; do
@@ -30,6 +33,11 @@ while :; do
 		# If DCOS terraform should run.
 		--skip-terraform)
 			RUN_TERRAFORM=false
+			;;
+			
+		# If CPU hard limit should be used.
+		--cpu-hard-limit)
+			CPU_HARD_LIMIT=true
 			;;
 			
 		# If swap should not be updated.
@@ -61,6 +69,16 @@ while :; do
 		# Keep bootstrap parameter.
 		--keep-bootstrap)
 			STOP_BOOTSTRAP=false
+			;;
+
+		# Destroy cluster.
+		--destroy)
+			DESTROY=true
+			;;
+
+		# Destroy cluster.
+		--destroy-confirm)
+			DESTROY_CONFIRM=true
 			;;
 
 		# No more options.
@@ -102,6 +120,18 @@ ${DEBUG} && echo "Exporting AWS config variables"
 export AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY AWS_DEFAULT_REGION
 
 . /project/dcos_cli.properties
+
+# If the cluster should be destroyed.
+if ${DESTROY_CONFIRM} && ${DESTROY}
+then
+
+	# Destroys the cluster.
+	${DEBUG} && echo "Destroying cluster"
+	terraform init
+	terraform destroy -auto-approve
+	exit
+
+fi
 
 # If terraform should run.
 if ${RUN_TERRAFORM}
@@ -177,6 +207,19 @@ do
 	AGENT_IP=${AGENT_IP//\"}
 	${DEBUG} && echo "AGENT_IP=${AGENT_IP}"
 	
+	# Mesos agent configuration file.
+	AGENT_CONFIGURATION_FILE="/var/lib/dcos/mesos-slave-common"
+	# If the mesos configuration file does not exist.
+	${DEBUG} && echo "sudo [ ! -f ${AGENT_CONFIGURATION_FILE} ]"
+	if ssh -oStrictHostKeyChecking=no -i ~/.ssh/aws_dcos_cluster_key \
+		centos@${AGENT_IP} sudo [ ! -f ${AGENT_CONFIGURATION_FILE} ]
+	then
+		# Creates the configuration file.
+		${DEBUG} && echo "sudo touch ${AGENT_CONFIGURATION_FILE}"
+		ssh -oStrictHostKeyChecking=no -i ~/.ssh/aws_dcos_cluster_key \
+			centos@${AGENT_IP} sudo touch ${AGENT_CONFIGURATION_FILE}
+	fi
+	
 	# If the agent is public.
 	PUBLIC_AGENT=false
 	if ssh -oStrictHostKeyChecking=no -i ~/.ssh/aws_dcos_cluster_key \
@@ -191,7 +234,7 @@ do
 	${DO_NOT_UPDATE_SWAP} || \
 	ssh -oStrictHostKeyChecking=no -i ~/.ssh/aws_dcos_cluster_key \
 	centos@${AGENT_IP} \
-	"( ( swapon -s | grep \"/swapfile\" ) ) || \
+	"( ( sudo swapon -s | grep /swapfile ) ) || \
 		( \
 			sudo swapoff -v /swapfile || true && \
 			sudo rm -f /swapfile && \
@@ -230,25 +273,36 @@ do
 	
 	fi
 	
+	# If the CPU soft limit is already set.
+	${DEBUG} && echo "sudo cat ${AGENT_CONFIGURATION_FILE} | grep \"MESOS_CGROUPS_ENABLE_CFS\""
+	if ssh -oStrictHostKeyChecking=no -i ~/.ssh/aws_dcos_cluster_key \
+		centos@${AGENT_IP} "sudo cat ${AGENT_CONFIGURATION_FILE} | grep \"MESOS_CGROUPS_ENABLE_CFS\""
+	then
+		# Sets CPU soft limit for the agent.
+		${DEBUG} && echo "sudo sed -i \
+			\"s/MESOS_CGROUPS_ENABLE_CFS=.*/MESOS_CGROUPS_ENABLE_CFS=${CPU_HARD_LIMIT}/\" \
+			${AGENT_CONFIGURATION_FILE}"
+		ssh -oStrictHostKeyChecking=no -i ~/.ssh/aws_dcos_cluster_key \
+			centos@${AGENT_IP} "sudo sed -i \
+			\"s/MESOS_CGROUPS_ENABLE_CFS=.*/MESOS_CGROUPS_ENABLE_CFS=${CPU_HARD_LIMIT}/\" \
+			${AGENT_CONFIGURATION_FILE}"
+	# If the CPU soft limit is not already set.
+	else
+		# Sets CPU soft limit for the agent.
+		${DEBUG} && echo "echo \"MESOS_CGROUPS_ENABLE_CFS=${CPU_HARD_LIMIT}\" | \
+			sudo tee -a ${AGENT_CONFIGURATION_FILE}"
+		ssh -oStrictHostKeyChecking=no -i ~/.ssh/aws_dcos_cluster_key \
+			centos@${AGENT_IP} "echo \"MESOS_CGROUPS_ENABLE_CFS=${CPU_HARD_LIMIT}\" | \
+			sudo tee -a ${AGENT_CONFIGURATION_FILE}"
+	fi
+
+	${DEBUG} && ssh -oStrictHostKeyChecking=no -i ~/.ssh/aws_dcos_cluster_key \
+	centos@${AGENT_IP} "cat ${AGENT_CONFIGURATION_FILE}"
+	
 	# If zone and region should be updated.
 	if ${UPDATE_ZONE_REGION}
 	then
 	
-		# Mesos agent configuration file.
-		AGENT_CONFIGURATION_FILE="/var/lib/dcos/mesos-slave-common"
-#		ssh -oStrictHostKeyChecking=no -i ~/.ssh/aws_dcos_cluster_key \
-#			centos@${AGENT_IP} sudo rm -f ${AGENT_CONFIGURATION_FILE}
-		# If the mesos configuration file does not exist.
-		${DEBUG} && echo "sudo [ ! -f ${AGENT_CONFIGURATION_FILE} ]"
-		if ssh -oStrictHostKeyChecking=no -i ~/.ssh/aws_dcos_cluster_key \
-			centos@${AGENT_IP} sudo [ ! -f ${AGENT_CONFIGURATION_FILE} ]
-		then
-			# Creates the configuration file.
-			${DEBUG} && echo "sudo touch ${AGENT_CONFIGURATION_FILE}"
-			ssh -oStrictHostKeyChecking=no -i ~/.ssh/aws_dcos_cluster_key \
-				centos@${AGENT_IP} sudo touch ${AGENT_CONFIGURATION_FILE}
-		fi
-		
 		# Mesos attributes.
 		MESOS_ATTRIBUTES="region:${AWS_DEFAULT_REGION};zone:${AGENT_INSTANCE_AZ}"
 		if ${PUBLIC_AGENT}
@@ -279,8 +333,7 @@ do
 				sudo tee -a ${AGENT_CONFIGURATION_FILE}"
 		fi
 		
-		${DEBUG} && echo "echo \"cat ${AGENT_CONFIGURATION_FILE}"
-		ssh -oStrictHostKeyChecking=no -i ~/.ssh/aws_dcos_cluster_key \
+		${DEBUG} && ssh -oStrictHostKeyChecking=no -i ~/.ssh/aws_dcos_cluster_key \
 			centos@${AGENT_IP} "cat ${AGENT_CONFIGURATION_FILE}"
 			
 	fi
@@ -302,19 +355,19 @@ do
 			"sudo iptables -A OUTPUT -d 169.254.169.254 -p tcp -m multiport --dports 80,443 -j DROP"
 	fi
 
-	# Reload agent configuration.
-	${DEBUG} && echo "ssh -oStrictHostKeyChecking=no -i ~/.ssh/aws_dcos_cluster_key \
-		centos@${AGENT_IP} \"sudo systemctl daemon-reload && \
-		sudo rm -f /var/lib/mesos/slave/meta/slaves/latest\""
-	ssh -oStrictHostKeyChecking=no -i ~/.ssh/aws_dcos_cluster_key \
-		centos@${AGENT_IP} \
-		"sudo systemctl daemon-reload && \
-		sudo rm -f /var/lib/mesos/slave/meta/slaves/latest && \
-		sudo systemctl daemon-reload"
-	
 	# If agents should restart.
 	if ${RESTART_AGENTS}
 	then
+	
+		# Reload agent configuration.
+		${DEBUG} && echo "ssh -oStrictHostKeyChecking=no -i ~/.ssh/aws_dcos_cluster_key \
+			centos@${AGENT_IP} \"sudo systemctl daemon-reload && \
+			sudo rm -f /var/lib/mesos/slave/meta/slaves/latest\""
+		ssh -oStrictHostKeyChecking=no -i ~/.ssh/aws_dcos_cluster_key \
+			centos@${AGENT_IP} \
+			"sudo systemctl daemon-reload && \
+			sudo rm -f /var/lib/mesos/slave/meta/slaves/latest && \
+			sudo systemctl daemon-reload"
 	
 		# Agent service.
 		AGENT_SERVICE="dcos-mesos-slave"
@@ -356,7 +409,7 @@ do
 	${DO_NOT_UPDATE_SWAP} || \
 	ssh -oStrictHostKeyChecking=no -i ~/.ssh/aws_dcos_cluster_key \
 	centos@${MASTER_IP} \
-	"( ( swapon -s | grep \"/swapfile\" ) ) || \
+	"( ( sudo swapon -s | grep \"/swapfile\" ) ) || \
 		( \
 			sudo swapoff -v /swapfile || true && \
 			sudo rm -f /swapfile && \

@@ -6,7 +6,7 @@ RUN apk add --no-cache \
 
 # Installs docker.
 ENV DOCKER_CHANNEL stable
-ENV DOCKER_VERSION 18.09.6
+ENV DOCKER_VERSION 19.03.1
 RUN set -eux; \
 	\
 # this "case" statement is generated via "update.sh"
@@ -43,7 +43,7 @@ RUN apk -v --update add \
 		less \
 		mailcap \
 		&& \
-	pip install --upgrade awscli==1.14.5 s3cmd==2.0.1 python-magic && \
+	pip install --upgrade awscli==1.16.170 s3cmd==2.0.1 python-magic && \
 	apk -v --purge del py-pip && \
 	rm /var/cache/apk/*
 	

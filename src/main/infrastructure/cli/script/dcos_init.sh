@@ -7,7 +7,7 @@ set -o errexit
 # Default paramentes.
 DEBUG=false
 DEBUG_OPT=
-WORK_DIRECTORY=/project
+WORK_DIRECTORY=.
 PRIVATE_KEY=
 UID=
 COMMAND=
@@ -85,7 +85,12 @@ else
 fi
 echo "DCOS setup finished"
 
-# Executes the dcos script.
-${DEBUG} && echo "Running '${COMMAND}'"
-exec ${COMMAND}
+
+# If there is a command to execute.
+if [ ! -z "${COMMAND}" ]
+then
+	# Executes the dcos script.
+	${DEBUG} && echo "Running '${COMMAND}'"
+	exec ${COMMAND}
+fi
 

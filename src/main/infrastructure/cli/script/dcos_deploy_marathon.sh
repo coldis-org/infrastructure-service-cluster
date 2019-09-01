@@ -7,7 +7,7 @@ set -o errexit
 # Default paramentes.
 DEBUG=false
 DEBUG_OPT=
-WORK_DIRECTORY=/project
+WORK_DIRECTORY=.
 DCOS_CONFIG_FILE=dcos_cli.properties
 DCOS_TEMP_SERVICE_FILE=${WORK_DIRECTORY}/temp-service.json
 FORCE=
@@ -20,6 +20,12 @@ while :; do
 		--debug)
 			DEBUG=true
 			DEBUG_OPT="--debug"
+			;;
+			
+		# Work directory.
+		-w|--work-directory)
+			WORK_DIRECTORY=${2}
+			shift
 			;;
 
 		# If debug should be enabled.

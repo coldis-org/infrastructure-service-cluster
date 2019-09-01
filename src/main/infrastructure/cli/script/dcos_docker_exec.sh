@@ -7,7 +7,7 @@ set -o errexit
 # Default paramentes.
 DEBUG=false
 DEBUG_OPT=
-WORK_DIRECTORY=/project
+WORK_DIRECTORY=.
 SSH_USER=centos
 USE_PRIVATE_IP=true
 USE_SSH=false
@@ -98,16 +98,16 @@ ${DEBUG} && echo "APP_ID=${APP_ID}"
 ${DEBUG} && echo "SSH_ARGUMENTS=${SSH_ARGUMENTS}"
 ${DEBUG} && echo "EXTRA_ARGUMENTS=${EXTRA_ARGUMENTS}"
 ${DEBUG} && echo "COMMAND=${COMMAND}"
-${DEBUG} && echo "STD_IN=`cat ${STD_IN_TEMP_FILE}`"
+${DEBUG} && echo "STD_IN=$(cat ${STD_IN_TEMP_FILE})"
 
 # Gets the agent information.
-APP_INFO=`dcos marathon app show ${APP_ID}`
+APP_INFO=$(dcos marathon app show ${APP_ID})
 #${DEBUG} && echo "APP_INFO=${APP_INFO}"
-APP_AGENT_ID=`echo ${APP_INFO} | jq -r ".tasks[0].slaveId"`
+APP_AGENT_ID=$(echo ${APP_INFO} | jq -r ".tasks[0].slaveId")
 ${DEBUG} && echo "APP_AGENT_ID=${APP_AGENT_ID}"
-APP_TASK_ID=`echo ${APP_INFO} | jq -r ".tasks[0].id"`
+APP_TASK_ID=$(echo ${APP_INFO} | jq -r ".tasks[0].id")
 ${DEBUG} && echo "APP_TASK_ID=${APP_TASK_ID}"
-APP_TASK_INFO=`dcos task --json ${APP_TASK_ID}`
+APP_TASK_INFO=$(dcos task --json ${APP_TASK_ID})
 #${DEBUG} && echo "APP_TASK_INFO=${APP_TASK_INFO}"
 APP_CONTAINER_ID=mesos-`echo ${APP_TASK_INFO} | jq -r ".[0].statuses[] | \
 	select(.state == \"TASK_RUNNING\") | \
@@ -122,9 +122,7 @@ then
 	if ${USE_PRIVATE_IP}
 	then
 		# Gets the agent IP.
-		AGENT_IP=`echo ${APP_TASK_INFO} | jq -r ".[0].statuses[] | \
-			select(.state == \"TASK_RUNNING\") | \
-			.container_status.network_infos[0].ip_addresses[0].ip_address"`
+		AGENT_IP=$(echo ${APP_INFO} | jq -r ".tasks[0].host")
 	# If public IP should be used.
 	else 
 		# Gets the agent IP.
@@ -134,7 +132,7 @@ then
 	fi
 fi
 ${DEBUG} && echo "AGENT_IP=${AGENT_IP}"
-IP_ADDRESS=`[ -z "${AGENT_IP}" ] && echo "" || echo "--ip ${AGENT_IP}"`
+IP_ADDRESS=$([ -z "${AGENT_IP}" ] && echo "" || echo "--ip ${AGENT_IP}")
 ${DEBUG} && echo "IP_ADDRESS=${IP_ADDRESS}"
 
 # Runs the docker command.
