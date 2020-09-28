@@ -11,8 +11,8 @@ RUN_TERRAFORM=true
 CPU_HARD_LIMIT=false
 UPDATE_ZONE_REGION=false
 DO_NOT_UPDATE_SWAP=true
-MASTERS_SWAP=12288
-AGENTS_SWAP=24576
+MASTERS_SWAP=16000
+AGENTS_SWAP=32000
 CONFIGURE_DOCKER=false
 RESTART_AGENTS=false
 RESTART_AGENTS_HARD=false
@@ -43,6 +43,18 @@ while :; do
 		# If swap should not be updated.
 		--update-swap)
 			DO_NOT_UPDATE_SWAP=false
+			;;
+	
+		# Masters swap.
+		--masters-swap)
+			MASTERS_SWAP=${2}
+			shift
+			;;
+
+		# Agents swap.
+		--agents-swap)
+			AGENTS_SWAP=${2}
+			shift
 			;;
 
 		# If docker should be configured.

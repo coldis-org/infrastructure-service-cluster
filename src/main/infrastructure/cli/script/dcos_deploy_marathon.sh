@@ -56,12 +56,12 @@ trap - INT TERM
 
 # Print parameters if on debug mode.
 ${DEBUG} && echo "Running 'dcos_deploy_marathon'"
-${DEBUG} && cat ${DCOS_TEMP_SERVICE_FILE}
 
 # Generates the deploy id.
 DEPLOY_ID="`head /dev/urandom | tr -dc \"0-9\" | head -c 13`"
 ${DEBUG} && echo "DEPLOY_ID=${DEPLOY_ID}"
 echo `jq ".env.DEPLOY_ID = \"${DEPLOY_ID}\"" ${DCOS_TEMP_SERVICE_FILE}` > ${DCOS_TEMP_SERVICE_FILE}
+${DEBUG} && cat ${DCOS_TEMP_SERVICE_FILE}
 
 # If the application exists in the cluster.
 if dcos marathon app show `jq -r ".id" < ${DCOS_TEMP_SERVICE_FILE}`

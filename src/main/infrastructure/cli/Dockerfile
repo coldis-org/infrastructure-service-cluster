@@ -1,5 +1,5 @@
 # From debian.
-FROM debian:10.0
+FROM debian:10.5
 
 # Sets locale and UTF-8 charset.
 ENV TZ=America/Sao_Paulo
@@ -24,7 +24,7 @@ RUN apt-get update -y && \
 	rm -rf /var/lib/apt/lists/*
 	
 # Installs the operational scripts.
-ENV OPS_UTILS_VERSION=0.0.16
+ENV OPS_UTILS_VERSION=0.0.28
 RUN mvn dependency:get -Dartifact=org.coldis.library:script-operational:${OPS_UTILS_VERSION} && \
 	mkdir -p /opt/operational-utils-script && \
 	cd /opt/operational-utils-script && \
@@ -37,10 +37,25 @@ RUN mvn dependency:get -Dartifact=org.coldis.library:script-operational:${OPS_UT
 		mv -- "${FILE}" "${FILE%.sh}"; \
 	done
 	
+# Uninstall unused applications.
+RUN apt-get update -y && \
+	apt-get remove -y maven unzip && \
+	apt-get autoremove -y && \
+	apt-get clean -y && \
+	rm -rf /var/lib/apt/lists/*
+	
 # Creates the work dir.
 RUN mkdir /project
 WORKDIR /project
 VOLUME /project
+
+# Installs DCOS CLI.
+ENV CLI_VERSION="latest" \
+	DCOS_COMMAND=dcos
+RUN [ -d /usr/local/bin ] || sudo mkdir -p /usr/local/bin && \
+	curl https://downloads.dcos.io/cli/releases/binaries/dcos/linux/x86-64/${CLI_VERSION}/dcos -o dcos && \
+	mv dcos /usr/local/bin/${DCOS_COMMAND} && \
+	chmod +x /usr/local/bin/${DCOS_COMMAND}
 
 # Copies the dcos scripts.
 RUN mkdir -p /opt/dcos-script
@@ -51,16 +66,5 @@ RUN ln -s /opt/dcos-script/*.sh /usr/bin && \
 		mv -- "${FILE}" "${FILE%.sh}"; \
 	done
 	
-# Installs DCOS CLI.
-ENV DCOS_VERSION=1.13
-RUN dcos_install --version ${DCOS_VERSION}
-
-# Uninstall unused applications.
-RUN apt-get update -y && \
-	apt-get remove -y maven unzip && \
-	apt-get autoremove -y && \
-	apt-get clean -y && \
-	rm -rf /var/lib/apt/lists/*
-
 # Entrypoint.
 ENTRYPOINT [ "dcos_init" ]

@@ -85,6 +85,7 @@ then
 		echo "${LINE}" >> ${STD_IN_TEMP_FILE}
 	done
 fi
+${DEBUG} && echo "STD_IN=$(cat ${STD_IN_TEMP_FILE})"
 
 # Using unavaialble variables should fail the script.
 set -o nounset
@@ -98,17 +99,16 @@ ${DEBUG} && echo "APP_ID=${APP_ID}"
 ${DEBUG} && echo "SSH_ARGUMENTS=${SSH_ARGUMENTS}"
 ${DEBUG} && echo "EXTRA_ARGUMENTS=${EXTRA_ARGUMENTS}"
 ${DEBUG} && echo "COMMAND=${COMMAND}"
-${DEBUG} && echo "STD_IN=$(cat ${STD_IN_TEMP_FILE})"
 
 # Gets the agent information.
-APP_INFO=$(dcos marathon app show ${APP_ID})
-#${DEBUG} && echo "APP_INFO=${APP_INFO}"
+APP_INFO="$(dcos marathon app show ${APP_ID} |  sed -e ':a' -e 'N' -e '$!ba' -e 's/[\\\r\n\t]//g')"
+${DEBUG} && echo "APP_INFO=${APP_INFO}"
 APP_AGENT_ID=$(echo ${APP_INFO} | jq -r ".tasks[0].slaveId")
 ${DEBUG} && echo "APP_AGENT_ID=${APP_AGENT_ID}"
 APP_TASK_ID=$(echo ${APP_INFO} | jq -r ".tasks[0].id")
 ${DEBUG} && echo "APP_TASK_ID=${APP_TASK_ID}"
-APP_TASK_INFO=$(dcos task --json ${APP_TASK_ID})
-#${DEBUG} && echo "APP_TASK_INFO=${APP_TASK_INFO}"
+APP_TASK_INFO=$(dcos task list --json ${APP_TASK_ID} |  sed -e ':a' -e 'N' -e '$!ba' -e 's/[\\\r\n\t]//g')
+${DEBUG} && echo "APP_TASK_INFO=${APP_TASK_INFO}"
 APP_CONTAINER_ID=mesos-`echo ${APP_TASK_INFO} | jq -r ".[0].statuses[] | \
 	select(.state == \"TASK_RUNNING\") | \
 	.container_status.container_id.value"`
@@ -118,17 +118,23 @@ AGENT_IP=
 # If SSH should be used.
 if ${USE_SSH}
 then
+	${DEBUG} && echo "Using SSH for docker exec"
 	# If private IP should be used.
 	if ${USE_PRIVATE_IP}
 	then
 		# Gets the agent IP.
+		${DEBUG} && echo "Getting private agent IP"
 		AGENT_IP=$(echo ${APP_INFO} | jq -r ".tasks[0].host")
 	# If public IP should be used.
 	else 
 		# Gets the agent IP.
-		AGENT_IP=`dcos node list --json | jq -r ".[] | \
+		${DEBUG} && echo "Getting public agent IP"
+		NODE_LIST=$( dcos node list --json | sed -e ':a' -e 'N' -e '$!ba' -e 's/[\\\r\n\t]//g' )
+		${DEBUG} && echo "NODE_LIST=${NODE_LIST}"
+		AGENT_IP=$( echo ${NODE_LIST} | \
+			jq -r ".[] | \
 			select(.id == \"${APP_AGENT_ID}\") | \
-			.public_ips[0]"`
+			.public_ips[0]" )
 	fi
 fi
 ${DEBUG} && echo "AGENT_IP=${AGENT_IP}"

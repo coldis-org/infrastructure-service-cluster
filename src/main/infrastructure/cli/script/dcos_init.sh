@@ -11,6 +11,7 @@ WORK_DIRECTORY=.
 PRIVATE_KEY=
 UID=
 COMMAND=
+INSECURE=--insecure
 
 # For each parameter.
 while :; do
@@ -25,7 +26,7 @@ while :; do
 		# Cluster address.
 		-a|--cluster-address)
 			CLUSTER_ADDRESS=${2}
-			break
+			shift
 			;;
 			
 		# Create service account.
@@ -78,11 +79,12 @@ ${DEBUG} && echo "CLUSTER_ADDRESS=${CLUSTER_ADDRESS}"
 if [ "${PRIVATE_KEY}" != "" ]
 then
 	${DEBUG} && echo "Logging in with private key"
-	dcos cluster setup http://${CLUSTER_ADDRESS} --username ${UID} --private-key ${PRIVATE_KEY}
+	dcos cluster setup "https://${CLUSTER_ADDRESS}" --username "${UID}" ${INSECURE} --private-key "${PRIVATE_KEY}" 
 else
 	${DEBUG} && echo "Logging in with token"
-	echo ${EXTERNAL_USER_TOKEN} | dcos cluster setup http://${CLUSTER_ADDRESS} --provider dcos-oidc-auth0
+	echo ${EXTERNAL_USER_TOKEN} | dcos cluster setup "http://${CLUSTER_ADDRESS}" --provider dcos-oidc-auth0
 fi
+
 echo "DCOS setup finished"
 
 
