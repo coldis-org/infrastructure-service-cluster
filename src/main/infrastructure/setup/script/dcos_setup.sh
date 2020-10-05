@@ -261,6 +261,7 @@ do
 			)
 		)"
 	
+	
 	# If docker should be configured.
 	if ${CONFIGURE_DOCKER}
 	then
