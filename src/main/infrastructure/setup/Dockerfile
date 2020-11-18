@@ -1,4 +1,4 @@
-FROM hashicorp/terraform:0.12.25
+FROM hashicorp/terraform:0.12.29
 
 # Installs CA certificates.
 RUN apk add --no-cache \
@@ -36,23 +36,29 @@ RUN set -eux; \
 	docker --version
 
 # Installs AWS CLI.
-RUN apk -v --update add \
-		python \
-		py-pip \
-		groff \
-		less \
-		mailcap \
-		&& \
-	pip install --upgrade awscli==1.16.170 s3cmd==2.0.1 python-magic && \
-	apk -v --purge del py-pip && \
+ENV GLIBC_VER=2.32-r0
+RUN apk -v --update --no-cache add \
+		binutils curl unzip && \
+    curl -sL https://alpine-pkgs.sgerrand.com/sgerrand.rsa.pub -o /etc/apk/keys/sgerrand.rsa.pub && \
+	curl -sLO https://github.com/sgerrand/alpine-pkg-glibc/releases/download/${GLIBC_VER}/glibc-${GLIBC_VER}.apk && \
+	curl -sLO https://github.com/sgerrand/alpine-pkg-glibc/releases/download/${GLIBC_VER}/glibc-bin-${GLIBC_VER}.apk && \
+	apk add \
+        glibc-${GLIBC_VER}.apk \
+        glibc-bin-${GLIBC_VER}.apk && \
+	curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip" && \
+	unzip awscliv2.zip && \
+	./aws/install && \
+	rm awscliv2.zip && \
+	aws --version && \
+	apk -v --purge del curl unzip && \
 	rm /var/cache/apk/*
 	
 # Installs envsubst.
 ENV BUILD_DEPS="gettext" \
 	RUNTIME_DEPS="libintl"
 RUN set -x && \
-	apk add --update $RUNTIME_DEPS && \
-	apk add --virtual build_deps $BUILD_DEPS &&  \
+	apk --no-cache add --update $RUNTIME_DEPS && \
+	apk --no-cache add --virtual build_deps $BUILD_DEPS &&  \
 	cp /usr/bin/envsubst /usr/local/bin/envsubst && \
 	apk del build_deps
 
@@ -71,4 +77,5 @@ RUN ln -s /opt/dcos-script/*.sh /usr/bin && \
 	done
 
 # Entrypoint.
-ENTRYPOINT [ "dcos_setup" ]
+ENTRYPOINT [ "sh", "-c" ] 
+CMD [ "dcos_setup" ]

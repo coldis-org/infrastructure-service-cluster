@@ -17,6 +17,11 @@ CONFIGURE_DOCKER=false
 RESTART_AGENTS=false
 RESTART_AGENTS_HARD=false
 STOP_BOOTSTRAP=true
+INIT=false
+UPGRADE=
+PLAN=false
+UPDATE=false
+APPLY=false
 DESTROY=false
 DESTROY_CONFIRM=false
 
@@ -28,6 +33,8 @@ while :; do
 		--debug)
 			DEBUG=true
 			DEBUG_OPT="--debug"
+			TF_LOG=DEBUG
+			export TF_LOG
 			;;
 			
 		# If DCOS terraform should run.
@@ -83,6 +90,31 @@ while :; do
 			STOP_BOOTSTRAP=false
 			;;
 
+		# Init terraform.
+		--init)
+			INIT=true
+			;;
+
+		# Upgrade terraform.
+		--upgrade)
+			UPGRADE=-upgrade
+			;;
+
+		# Plan terraform.
+		--plan)
+			PLAN=true
+			;;
+
+		# Update cluster.
+		--update)
+			UPDATE=true
+			;;
+
+		# Apply cluster.
+		--apply)
+			APPLY=true
+			;;
+
 		# Destroy cluster.
 		--destroy)
 			DESTROY=true
@@ -130,7 +162,6 @@ ssh-add ~/.ssh/aws_dcos_cluster_key
 ${DEBUG} && echo "Exporting AWS config variables"
 . /project/aws_basic_config.properties
 export AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY AWS_DEFAULT_REGION
-
 . /project/dcos_cli.properties
 
 # If the cluster should be destroyed.
@@ -138,8 +169,9 @@ if ${DESTROY_CONFIRM} && ${DESTROY}
 then
 
 	# Destroys the cluster.
+	${DEBUG} && ${INIT} && echo "terraform init ${UPGRADE}"
+	${INIT} && terraform init ${UPGRADE}
 	${DEBUG} && echo "Destroying cluster"
-	terraform init
 	terraform destroy -auto-approve
 	exit
 
@@ -155,35 +187,35 @@ then
 	aws ec2 start-instances --region ${AWS_DEFAULT_REGION} --instance-ids ${BOOTSTRAP_INSTANCE} || true
 
 	# Executes the terraform script.
-	${DEBUG} && echo "terraform init
-	terraform plan -out=create_dcos_cluster.out
-	terraform apply create_dcos_cluster.out"
-	terraform init
-	terraform plan -out=create_dcos_cluster.out
+	${DEBUG} && ${INIT} && echo "terraform init ${UPGRADE}"
+	${INIT} && terraform init ${UPGRADE}
+	${DEBUG} && ${UPDATE} && echo "terraform get -update"
+	${UPDATE} && terraform get -update
+	${DEBUG} && ${PLAN} && echo "terraform plan -out=create_dcos_cluster.out"
+	${PLAN} && terraform plan -out=create_dcos_cluster.out
+	${DEBUG} && echo "terraform apply -no-color create_dcos_cluster.out | tee /project/dcos_setup.log"
 	terraform apply -no-color create_dcos_cluster.out | tee /project/dcos_setup.log
 
 	# Gets the cluster config.
 	${DEBUG} && echo "Updating DCOS config variables"
 	CLUSTER_ADDRESS=`cat /project/dcos_setup.log | \
 		grep "cluster-address = " | \
-		sed "s/cluster-address = //"`
+		sed -e "s/cluster-address = //" -e 's/"//g'`
 	PUBLIC_ADDRESS=`cat /project/dcos_setup.log | \
 		grep "public-agents-loadbalancer = " | \
-		sed "s/public-agents-loadbalancer = //"`
+		sed -e 's/public-agents-loadbalancer = //' -e 's/"//g'`
 	AGENT_INSTANCES=`sed -n -e '/private-agents-instances = \[/,/\]/p' dcos_setup.log | 
-		sed -e 's/private-agents-instances = \[//' -e 's/\]//'`
+		sed -e 's/private-agents-instances = \[//' -e 's/\]//' -e 's/"//g'`
 	AGENT_INSTANCES="${AGENT_INSTANCES},
 	`sed -n -e '/public-agents-instances = \[/,/\]/p' dcos_setup.log | 
-		sed -e 's/public-agents-instances = \[//' -e 's/\]//'`"
-	AGENT_INSTANCES=`echo ${AGENT_INSTANCES} | sed -e 's/ //g'`	
-	AGENT_INSTANCES=`echo ${AGENT_INSTANCES} | sed -e 's/,/\\,/g'`	
+		sed -e 's/public-agents-instances = \[//' -e 's/\]//' -e 's/"//g'`"
+	AGENT_INSTANCES=`echo ${AGENT_INSTANCES} | sed -e 's/ //g' -e 's/,/\\,/g' -e 's/"//g'`	
 	MASTERS_IPS=`sed -n -e '/masters-ips = \[/,/\]/p' dcos_setup.log | 
 		sed -e 's/masters-ips = \[//' -e 's/\]//' `
-	MASTERS_IPS=`echo ${MASTERS_IPS} | sed -e 's/ //g'`	
-	MASTERS_IPS=`echo ${MASTERS_IPS} | sed -e 's/,/\\,/g'`	
+	MASTERS_IPS=`echo ${MASTERS_IPS} | sed -e 's/ //g' -e 's/,/\\,/g' -e 's/"//g'`	
 	BOOTSTRAP_INSTANCE=`cat /project/dcos_setup.log | \
 		grep "bootstrap-instance = " | \
-		sed "s/bootstrap-instance = //"`
+		sed -e "s/bootstrap-instance = //" -e 's/"//g'`
 	
 	# If the cluster address cannot be retrieved.
 	if [ -z "${CLUSTER_ADDRESS}" ] || \
