@@ -440,19 +440,20 @@ then
 					sudo useradd --no-create-home node_exporter; \
 					cd /etc/systemd/system; \
 					sudo bash -c 'cat << 'EOF' > node-exporter.service
-	[Unit]
-	Description=Prometheus Node Exporter Service
-	After=network.target
-	[Service]
-	User=node_exporter
-	Group=node_exporter
-	Type=simple
-	ExecStart=/usr/local/bin/node_exporter
-	[Install]
-	WantedBy=multi-user.target
-	EOF'; \
+[Unit]
+Description=Prometheus Node Exporter Service
+After=network.target
+[Service]
+User=node_exporter
+Group=node_exporter
+Type=simple
+ExecStart=/usr/local/bin/node_exporter
+[Install]
+WantedBy=multi-user.target
+EOF'; \
 					sudo systemctl daemon-reload; \
 					sudo systemctl start node-exporter; \
+					sudo systemctl enable node-exporter; \
 					sudo systemctl status node-exporter;"
 		fi
 		
@@ -585,6 +586,7 @@ WantedBy=multi-user.target
 EOF'; \
 					sudo systemctl daemon-reload; \
 					sudo systemctl start node-exporter; \
+					sudo systemctl enable node-exporter; \
 					sudo systemctl status node-exporter;"
 		fi
 	
