@@ -274,227 +274,255 @@ then
 		AGENT_IP=${AGENT_IP//\"}
 		${DEBUG} && echo "AGENT_IP=${AGENT_IP}"
 		
-		# Mesos agent configuration file.
-		AGENT_CONFIGURATION_FILE="/var/lib/dcos/mesos-slave-common"
-		# If the mesos configuration file does not exist.
-		${DEBUG} && echo "sudo [ ! -f ${AGENT_CONFIGURATION_FILE} ]"
-		if ssh -oStrictHostKeyChecking=no -i ~/.ssh/aws_dcos_cluster_key \
-			centos@${AGENT_IP} sudo [ ! -f ${AGENT_CONFIGURATION_FILE} ]
-		then
-			# Creates the configuration file.
-			${DEBUG} && echo "sudo touch ${AGENT_CONFIGURATION_FILE}"
-			ssh -oStrictHostKeyChecking=no -i ~/.ssh/aws_dcos_cluster_key \
-				centos@${AGENT_IP} sudo touch ${AGENT_CONFIGURATION_FILE}
-		fi
-		
-		# If the agent is public.
-		PUBLIC_AGENT=false
-		if ssh -oStrictHostKeyChecking=no -i ~/.ssh/aws_dcos_cluster_key \
-			centos@${AGENT_IP} \
-			"sudo systemctl list-unit-files | grep dcos-mesos-slave-public"
-		then
-			PUBLIC_AGENT=true
-		fi
-	
-		# Configures the swap.
-		${DEBUG} && echo "Configuring swap for agent ${AGENT_IP}"
-		${DO_NOT_UPDATE_SWAP} || \
-		ssh -oStrictHostKeyChecking=no -i ~/.ssh/aws_dcos_cluster_key \
-		centos@${AGENT_IP} \
-		"( ( sudo swapon -s | grep /swapfile ) ) || \
-			( \
-				sudo swapoff -v /swapfile || true && \
-				sudo rm -f /swapfile && \
-				sudo dd if=/dev/zero of=/swapfile count=${AGENTS_SWAP} bs=1MiB && \
-				sudo chmod 600 /swapfile && \
-				sudo mkswap /swapfile && \
-				sudo swapon /swapfile && \
-				( \
-					( ${DEBUG} && sudo cat /etc/fstab ) &&
-					( sudo cat /etc/fstab | grep /swapfile ) || \
-					( echo \"/swapfile swap swap sw 0 0\" | sudo tee -a /etc/fstab ) \
-				)
-			)"
-		
-		
-		# If docker should be configured.
-		if ${CONFIGURE_DOCKER}
+		if (ssh -oStrictHostKeyChecking=no -i ~/.ssh/aws_dcos_cluster_key \
+			centos@${AGENT_IP} "ls" || false)
 		then
 		
-			# Configures the docker as non-root.
-			${DEBUG} && echo "Configuring Docker as non-root for agent ${AGENT_IP}"
-			ssh -oStrictHostKeyChecking=no -i ~/.ssh/aws_dcos_cluster_key centos@${AGENT_IP} \
-			'sudo usermod -aG docker $USER || true'
-		
-			# Puts the DCOS properties into context.
-			. /project/dcos_cli.properties
-			
-			# Logs docker in the repository.
-			${DEBUG} && echo "Logging docker in the repository."
-			ssh -oStrictHostKeyChecking=no -i ~/.ssh/aws_dcos_cluster_key \
-				centos@${AGENT_IP} \
-				"rm -f /home/centos/.docker/config.json && \
-					docker login -u ${DOCKER_USER} -p ${DOCKER_PASSWORD} ${DOCKER_REPOSITORY} && \
-					cd ~ && tar -czf private-docker.tar.gz .docker && \
-					sudo mv private-docker.tar.gz /etc/ && \
-					rm -f /home/centos/.docker/config.json"
-		
-		fi
-		
-		# If the CPU soft limit is already set.
-		${DEBUG} && echo "sudo cat ${AGENT_CONFIGURATION_FILE} | grep \"MESOS_CGROUPS_ENABLE_CFS\""
-		if ssh -oStrictHostKeyChecking=no -i ~/.ssh/aws_dcos_cluster_key \
-			centos@${AGENT_IP} "sudo cat ${AGENT_CONFIGURATION_FILE} | grep \"MESOS_CGROUPS_ENABLE_CFS\""
-		then
-			# Sets CPU soft limit for the agent.
-			${DEBUG} && echo "sudo sed -i \
-				\"s/MESOS_CGROUPS_ENABLE_CFS=.*/MESOS_CGROUPS_ENABLE_CFS=${CPU_HARD_LIMIT}/\" \
-				${AGENT_CONFIGURATION_FILE}"
-			ssh -oStrictHostKeyChecking=no -i ~/.ssh/aws_dcos_cluster_key \
-				centos@${AGENT_IP} "sudo sed -i \
-				\"s/MESOS_CGROUPS_ENABLE_CFS=.*/MESOS_CGROUPS_ENABLE_CFS=${CPU_HARD_LIMIT}/\" \
-				${AGENT_CONFIGURATION_FILE}"
-		# If the CPU soft limit is not already set.
-		else
-			# Sets CPU soft limit for the agent.
-			${DEBUG} && echo "echo \"MESOS_CGROUPS_ENABLE_CFS=${CPU_HARD_LIMIT}\" | \
-				sudo tee -a ${AGENT_CONFIGURATION_FILE}"
-			ssh -oStrictHostKeyChecking=no -i ~/.ssh/aws_dcos_cluster_key \
-				centos@${AGENT_IP} "echo \"MESOS_CGROUPS_ENABLE_CFS=${CPU_HARD_LIMIT}\" | \
-				sudo tee -a ${AGENT_CONFIGURATION_FILE}"
-		fi
-	
-		${DEBUG} && ssh -oStrictHostKeyChecking=no -i ~/.ssh/aws_dcos_cluster_key \
-		centos@${AGENT_IP} "cat ${AGENT_CONFIGURATION_FILE}"
-		
-		# If zone and region should be updated.
-		if ${UPDATE_ZONE_REGION}
-		then
-		
-			# Mesos attributes.
-			MESOS_ATTRIBUTES="region:${AWS_DEFAULT_REGION};zone:${AGENT_INSTANCE_AZ}"
-			if ${PUBLIC_AGENT}
+			# Mesos agent configuration file.
+			AGENT_CONFIGURATION_FILE="/var/lib/dcos/mesos-slave-common"
+			# If the mesos configuration file does not exist.
+			${DEBUG} && echo "sudo [ ! -f ${AGENT_CONFIGURATION_FILE} ]"
+			if ssh -oStrictHostKeyChecking=no -i ~/.ssh/aws_dcos_cluster_key \
+				centos@${AGENT_IP} sudo [ ! -f ${AGENT_CONFIGURATION_FILE} ]
 			then
-				MESOS_ATTRIBUTES="${MESOS_ATTRIBUTES};public_ip:true"
+				# Creates the configuration file.
+				${DEBUG} && echo "sudo touch ${AGENT_CONFIGURATION_FILE}"
+				ssh -oStrictHostKeyChecking=no -i ~/.ssh/aws_dcos_cluster_key \
+					centos@${AGENT_IP} sudo touch ${AGENT_CONFIGURATION_FILE}
 			fi
 			
-			# If the mesos attributes are already set.
-			${DEBUG} && echo "sudo cat ${AGENT_CONFIGURATION_FILE} | grep \"MESOS_ATTRIBUTES\""
+			# If the agent is public.
+			PUBLIC_AGENT=false
 			if ssh -oStrictHostKeyChecking=no -i ~/.ssh/aws_dcos_cluster_key \
-				centos@${AGENT_IP} "sudo cat ${AGENT_CONFIGURATION_FILE} | grep \"MESOS_ATTRIBUTES\""
+				centos@${AGENT_IP} \
+				"sudo systemctl list-unit-files | grep dcos-mesos-slave-public"
 			then
-				# Sets the region and zone for the agent.
+				PUBLIC_AGENT=true
+			fi
+		
+			# Configures the swap.
+			${DEBUG} && echo "Configuring swap for agent ${AGENT_IP}"
+			${DO_NOT_UPDATE_SWAP} || \
+			ssh -oStrictHostKeyChecking=no -i ~/.ssh/aws_dcos_cluster_key \
+			centos@${AGENT_IP} \
+			"( ( sudo swapon -s | grep /swapfile ) ) || \
+				( \
+					sudo swapoff -v /swapfile || true && \
+					sudo rm -f /swapfile && \
+					sudo dd if=/dev/zero of=/swapfile count=${AGENTS_SWAP} bs=1MiB && \
+					sudo chmod 600 /swapfile && \
+					sudo mkswap /swapfile && \
+					sudo swapon /swapfile && \
+					( \
+						( ${DEBUG} && sudo cat /etc/fstab ) &&
+						( sudo cat /etc/fstab | grep /swapfile ) || \
+						( echo \"/swapfile swap swap sw 0 0\" | sudo tee -a /etc/fstab ) \
+					)
+				)"
+			
+			
+			# If docker should be configured.
+			if ${CONFIGURE_DOCKER}
+			then
+			
+				# Configures the docker as non-root.
+				${DEBUG} && echo "Configuring Docker as non-root for agent ${AGENT_IP}"
+				ssh -oStrictHostKeyChecking=no -i ~/.ssh/aws_dcos_cluster_key centos@${AGENT_IP} \
+				'sudo usermod -aG docker $USER || true'
+			
+				# Puts the DCOS properties into context.
+				. /project/dcos_cli.properties
+				
+				# Prepares the docker config.
+				ssh -oStrictHostKeyChecking=no -i ~/.ssh/aws_dcos_cluster_key \
+					centos@${AGENT_IP} \
+						"sudo rm -f /etc/docker/daemon.json && \
+							rm -f /home/centos/.docker/config.json"
+				
+				# For each docker repository.
+				for DOCKER_REPOSITORY in $(echo ${DOCKER_REPOSITORIES} | sed -e 's/,/\n/g')
+				do
+				
+					# Logs docker in the repository.
+					${DEBUG} && echo "Logging docker in the repository."
+					ssh -oStrictHostKeyChecking=no -i ~/.ssh/aws_dcos_cluster_key \
+						centos@${AGENT_IP} \
+						"sudo mkdir -p /etc/docker/certs.d/${DOCKER_REPOSITORY}/ && \
+							sudo rm -f /etc/docker/certs.d/${DOCKER_REPOSITORY}/* && \
+							(echo -n | openssl s_client -connect ${DOCKER_REPOSITORY}:443 -showcerts -servername ${DOCKER_REPOSITORY} | \
+								sed -ne '/-BEGIN CERTIFICATE-/,/-END CERTIFICATE-/p' | sudo tee /etc/docker/certs.d/${DOCKER_REPOSITORY}/ca.crt) && \
+							docker login -u ${DOCKER_USER} -p ${DOCKER_PASSWORD} ${DOCKER_REPOSITORY}" || true
+				
+				done
+				
+				# Finishes docker config.
+				ssh -oStrictHostKeyChecking=no -i ~/.ssh/aws_dcos_cluster_key \
+					centos@${AGENT_IP} \
+						"cd ~ && tar -czf private-docker.tar.gz .docker && \
+							sudo mv private-docker.tar.gz /etc/ && \
+							rm -f /home/centos/.docker/config.json"
+				
+			fi
+			
+			# If the CPU soft limit is already set.
+			${DEBUG} && echo "sudo cat ${AGENT_CONFIGURATION_FILE} | grep \"MESOS_CGROUPS_ENABLE_CFS\""
+			if ssh -oStrictHostKeyChecking=no -i ~/.ssh/aws_dcos_cluster_key \
+				centos@${AGENT_IP} "sudo cat ${AGENT_CONFIGURATION_FILE} | grep \"MESOS_CGROUPS_ENABLE_CFS\""
+			then
+				# Sets CPU soft limit for the agent.
 				${DEBUG} && echo "sudo sed -i \
-					\"s/MESOS_ATTRIBUTES=.*/MESOS_ATTRIBUTES=${MESOS_ATTRIBUTES}/\" \
+					\"s/MESOS_CGROUPS_ENABLE_CFS=.*/MESOS_CGROUPS_ENABLE_CFS=${CPU_HARD_LIMIT}/\" \
 					${AGENT_CONFIGURATION_FILE}"
 				ssh -oStrictHostKeyChecking=no -i ~/.ssh/aws_dcos_cluster_key \
 					centos@${AGENT_IP} "sudo sed -i \
-					\"s/MESOS_ATTRIBUTES=.*/MESOS_ATTRIBUTES=${MESOS_ATTRIBUTES}/\" \
+					\"s/MESOS_CGROUPS_ENABLE_CFS=.*/MESOS_CGROUPS_ENABLE_CFS=${CPU_HARD_LIMIT}/\" \
 					${AGENT_CONFIGURATION_FILE}"
-			# If the mesos attributes are not already set.
+			# If the CPU soft limit is not already set.
 			else
-				# Sets the region and zone for the agent.
-				${DEBUG} && echo "echo \"MESOS_ATTRIBUTES=${MESOS_ATTRIBUTES}\" | \
+				# Sets CPU soft limit for the agent.
+				${DEBUG} && echo "echo \"MESOS_CGROUPS_ENABLE_CFS=${CPU_HARD_LIMIT}\" | \
 					sudo tee -a ${AGENT_CONFIGURATION_FILE}"
 				ssh -oStrictHostKeyChecking=no -i ~/.ssh/aws_dcos_cluster_key \
-					centos@${AGENT_IP} "echo \"MESOS_ATTRIBUTES=${MESOS_ATTRIBUTES}\" | \
+					centos@${AGENT_IP} "echo \"MESOS_CGROUPS_ENABLE_CFS=${CPU_HARD_LIMIT}\" | \
 					sudo tee -a ${AGENT_CONFIGURATION_FILE}"
 			fi
-			
+		
 			${DEBUG} && ssh -oStrictHostKeyChecking=no -i ~/.ssh/aws_dcos_cluster_key \
-				centos@${AGENT_IP} "cat ${AGENT_CONFIGURATION_FILE}"
+			centos@${AGENT_IP} "cat ${AGENT_CONFIGURATION_FILE}"
+			
+			# If zone and region should be updated.
+			if ${UPDATE_ZONE_REGION}
+			then
+			
+				# Mesos attributes.
+				MESOS_ATTRIBUTES="region:${AWS_DEFAULT_REGION};zone:${AGENT_INSTANCE_AZ}"
+				if ${PUBLIC_AGENT}
+				then
+					MESOS_ATTRIBUTES="${MESOS_ATTRIBUTES};public_ip:true"
+				fi
 				
-		fi
-	
-		# If AWS URL is still not blocked.
-		${DEBUG} && echo "ssh -oStrictHostKeyChecking=no -i ~/.ssh/aws_dcos_cluster_key \
-			centos@${AGENT_IP} \
-			\"sudo iptables -C OUTPUT -d 169.254.169.254 -p tcp -m multiport --dports 80,443 -j DROP || false\""
-		if ssh -oStrictHostKeyChecking=no -i ~/.ssh/aws_dcos_cluster_key \
-			centos@${AGENT_IP} \
-			"sudo iptables -C OUTPUT -d 169.254.169.254 -p tcp -m multiport --dports 80,443 -j DROP || false"
-		then
-			# Blocks the AWS URL.
+				# If the mesos attributes are already set.
+				${DEBUG} && echo "sudo cat ${AGENT_CONFIGURATION_FILE} | grep \"MESOS_ATTRIBUTES\""
+				if ssh -oStrictHostKeyChecking=no -i ~/.ssh/aws_dcos_cluster_key \
+					centos@${AGENT_IP} "sudo cat ${AGENT_CONFIGURATION_FILE} | grep \"MESOS_ATTRIBUTES\""
+				then
+					# Sets the region and zone for the agent.
+					${DEBUG} && echo "sudo sed -i \
+						\"s/MESOS_ATTRIBUTES=.*/MESOS_ATTRIBUTES=${MESOS_ATTRIBUTES}/\" \
+						${AGENT_CONFIGURATION_FILE}"
+					ssh -oStrictHostKeyChecking=no -i ~/.ssh/aws_dcos_cluster_key \
+						centos@${AGENT_IP} "sudo sed -i \
+						\"s/MESOS_ATTRIBUTES=.*/MESOS_ATTRIBUTES=${MESOS_ATTRIBUTES}/\" \
+						${AGENT_CONFIGURATION_FILE}"
+				# If the mesos attributes are not already set.
+				else
+					# Sets the region and zone for the agent.
+					${DEBUG} && echo "echo \"MESOS_ATTRIBUTES=${MESOS_ATTRIBUTES}\" | \
+						sudo tee -a ${AGENT_CONFIGURATION_FILE}"
+					ssh -oStrictHostKeyChecking=no -i ~/.ssh/aws_dcos_cluster_key \
+						centos@${AGENT_IP} "echo \"MESOS_ATTRIBUTES=${MESOS_ATTRIBUTES}\" | \
+						sudo tee -a ${AGENT_CONFIGURATION_FILE}"
+				fi
+				
+				${DEBUG} && ssh -oStrictHostKeyChecking=no -i ~/.ssh/aws_dcos_cluster_key \
+					centos@${AGENT_IP} "cat ${AGENT_CONFIGURATION_FILE}"
+					
+			fi
+		
+			# If AWS URL is still not blocked.
 			${DEBUG} && echo "ssh -oStrictHostKeyChecking=no -i ~/.ssh/aws_dcos_cluster_key \
 				centos@${AGENT_IP} \
-				\"sudo iptables -A OUTPUT -d 169.254.169.254 -p tcp -m multiport --dports 80,443 -j DROP\""
-			ssh -oStrictHostKeyChecking=no -i ~/.ssh/aws_dcos_cluster_key \
+				\"sudo iptables -C OUTPUT -d 169.254.169.254 -p tcp -m multiport --dports 80,443 -j DROP || false\""
+			if ssh -oStrictHostKeyChecking=no -i ~/.ssh/aws_dcos_cluster_key \
 				centos@${AGENT_IP} \
-				"sudo iptables -A OUTPUT -d 169.254.169.254 -p tcp -m multiport --dports 80,443 -j DROP"
-		fi
-		
-		
-		# If zone and region should be updated.
-		if ${CONFIGURE_PROMETHEUS}
-		then
-			# Configures prometheus.
-			${DEBUG} && echo "Configuring prometheus agents in agent node ${AGENT_IP}"
-			ssh -oStrictHostKeyChecking=no -i ~/.ssh/aws_dcos_cluster_key \
-				centos@${AGENT_IP} \
-				"sudo yum install wget -y; \
-					wget https://github.com/prometheus/node_exporter/releases/download/v1.0.1/node_exporter-1.0.1.linux-amd64.tar.gz; \
-					tar xvfz node_exporter-1.0.1.linux-amd64.tar.gz; \
-					rm node_exporter-1.0.1.linux-amd64.tar.gz; \
-					sudo cp node_exporter-1.0.1.linux-amd64/node_exporter /usr/local/bin/node_exporter; \
-					sudo rm -rf node_exporter-1.0.1.linux-amd64; \
-					sudo useradd --no-create-home node_exporter; \
-					cd /etc/systemd/system; \
-					sudo bash -c 'cat << 'EOF' > node-exporter.service
+				"sudo iptables -C OUTPUT -d 169.254.169.254 -p tcp -m multiport --dports 80,443 -j DROP || false"
+			then
+				# Blocks the AWS URL.
+				${DEBUG} && echo "ssh -oStrictHostKeyChecking=no -i ~/.ssh/aws_dcos_cluster_key \
+					centos@${AGENT_IP} \
+					\"sudo iptables -A OUTPUT -d 169.254.169.254 -p tcp -m multiport --dports 80,443 -j DROP\""
+				ssh -oStrictHostKeyChecking=no -i ~/.ssh/aws_dcos_cluster_key \
+					centos@${AGENT_IP} \
+					"sudo iptables -A OUTPUT -d 169.254.169.254 -p tcp -m multiport --dports 80,443 -j DROP"
+			fi
+			
+			
+			# If zone and region should be updated.
+			if ${CONFIGURE_PROMETHEUS}
+			then
+				# Configures prometheus.
+				${DEBUG} && echo "Configuring prometheus agents in agent node ${AGENT_IP}"
+				ssh -oStrictHostKeyChecking=no -i ~/.ssh/aws_dcos_cluster_key \
+					centos@${AGENT_IP} \
+					"sudo yum install wget -y; \
+						wget https://github.com/prometheus/node_exporter/releases/download/v1.0.1/node_exporter-1.0.1.linux-amd64.tar.gz; \
+						tar xvfz node_exporter-1.0.1.linux-amd64.tar.gz; \
+						rm node_exporter-1.0.1.linux-amd64.tar.gz; \
+						sudo cp node_exporter-1.0.1.linux-amd64/node_exporter /usr/local/bin/node_exporter; \
+						sudo rm -rf node_exporter-1.0.1.linux-amd64; \
+						sudo useradd --no-create-home node_exporter; \
+						cd /etc/systemd/system; \
+						sudo bash -c 'cat << 'EOF' > node-exporter.service
 [Unit]
 Description=Prometheus Node Exporter Service
 After=network.target
+StartLimitIntervalSec=0s
 [Service]
 User=node_exporter
 Group=node_exporter
 Type=simple
+Restart=always
+RestartSec=30
 ExecStart=/usr/local/bin/node_exporter
 [Install]
 WantedBy=multi-user.target
 EOF'; \
-					sudo systemctl daemon-reload; \
-					sudo systemctl start node-exporter; \
-					sudo systemctl enable node-exporter; \
-					sudo systemctl status node-exporter;"
-		fi
-		
-	
-		# If agents should restart.
-		if ${RESTART_AGENTS}
-		then
-		
-			# Reload agent configuration.
-			${DEBUG} && echo "ssh -oStrictHostKeyChecking=no -i ~/.ssh/aws_dcos_cluster_key \
-				centos@${AGENT_IP} \"sudo systemctl daemon-reload && \
-				sudo rm -f /var/lib/mesos/slave/meta/slaves/latest\""
-			ssh -oStrictHostKeyChecking=no -i ~/.ssh/aws_dcos_cluster_key \
-				centos@${AGENT_IP} \
-				"sudo systemctl daemon-reload && \
-				sudo rm -f /var/lib/mesos/slave/meta/slaves/latest && \
-				sudo systemctl daemon-reload"
-		
-			# Agent service.
-			AGENT_SERVICE="dcos-mesos-slave"
-			if ${PUBLIC_AGENT}
-			then
-				AGENT_SERVICE="dcos-mesos-slave-public"
+						sudo systemctl stop node-exporter; \
+						sudo systemctl daemon-reload; \
+						sudo systemctl enable node-exporter; \
+						sudo systemctl start node-exporter; \
+						sudo systemctl status node-exporter;" || true
 			fi
-			
-			# Restarts the agent.
-			if ${RESTART_AGENTS_HARD}
+		
+			# If agents should restart.
+			if ${RESTART_AGENTS}
 			then
+			
+				# Reload agent configuration.
 				${DEBUG} && echo "ssh -oStrictHostKeyChecking=no -i ~/.ssh/aws_dcos_cluster_key \
-					centos@${AGENT_IP} sudo systemctl restart dcos-mesos-slave"
+					centos@${AGENT_IP} \"sudo systemctl daemon-reload && \
+					sudo rm -f /var/lib/mesos/slave/meta/slaves/latest\""
 				ssh -oStrictHostKeyChecking=no -i ~/.ssh/aws_dcos_cluster_key \
 					centos@${AGENT_IP} \
-					sudo reboot || true
-			else 
-				${DEBUG} && echo "ssh -oStrictHostKeyChecking=no -i ~/.ssh/aws_dcos_cluster_key \
-					centos@${AGENT_IP} sudo systemctl restart dcos-mesos-slave"
-				ssh -oStrictHostKeyChecking=no -i ~/.ssh/aws_dcos_cluster_key \
-					centos@${AGENT_IP} \
-					sudo systemctl restart ${AGENT_SERVICE}
-			fi
+					"sudo systemctl daemon-reload && \
+					sudo rm -f /var/lib/mesos/slave/meta/slaves/latest && \
+					sudo systemctl daemon-reload"
 			
+				# Agent service.
+				AGENT_SERVICE="dcos-mesos-slave"
+				if ${PUBLIC_AGENT}
+				then
+					AGENT_SERVICE="dcos-mesos-slave-public"
+				fi
+				
+				# Restarts the agent.
+				if ${RESTART_AGENTS_HARD}
+				then
+					${DEBUG} && echo "ssh -oStrictHostKeyChecking=no -i ~/.ssh/aws_dcos_cluster_key \
+						centos@${AGENT_IP} sudo systemctl restart dcos-mesos-slave"
+					ssh -oStrictHostKeyChecking=no -i ~/.ssh/aws_dcos_cluster_key \
+						centos@${AGENT_IP} \
+						sudo reboot || true
+				else 
+					${DEBUG} && echo "ssh -oStrictHostKeyChecking=no -i ~/.ssh/aws_dcos_cluster_key \
+						centos@${AGENT_IP} sudo systemctl restart dcos-mesos-slave"
+					ssh -oStrictHostKeyChecking=no -i ~/.ssh/aws_dcos_cluster_key \
+						centos@${AGENT_IP} \
+						sudo systemctl restart ${AGENT_SERVICE}
+				fi
+				
+			fi
+		
 		fi
 	
 	done
@@ -513,84 +541,93 @@ then
 	
 		${DEBUG} && echo "MASTER_IP=${MASTER_IP}"
 		
-		# Configures the swap.
-		${DEBUG} && echo "Configuring swap for master ${MASTER_IP}"
-		${DO_NOT_UPDATE_SWAP} || \
-		ssh -oStrictHostKeyChecking=no -i ~/.ssh/aws_dcos_cluster_key \
-		centos@${MASTER_IP} \
-		"( ( sudo swapon -s | grep \"/swapfile\" ) ) || \
-			( \
-				sudo swapoff -v /swapfile || true && \
-				sudo rm -f /swapfile && \
-				sudo dd if=/dev/zero of=/swapfile count=${MASTERS_SWAP} bs=1MiB && \
-				sudo chmod 600 /swapfile && \
-				sudo mkswap /swapfile && \
-				sudo swapon /swapfile && \
+		if ssh -oStrictHostKeyChecking=no -i ~/.ssh/aws_dcos_cluster_key \
+			centos@${MASTER_IP} "ls"
+		then
+
+			# Configures the swap.
+			${DEBUG} && echo "Configuring swap for master ${MASTER_IP}"
+			${DO_NOT_UPDATE_SWAP} || \
+			ssh -oStrictHostKeyChecking=no -i ~/.ssh/aws_dcos_cluster_key \
+			centos@${MASTER_IP} \
+			"( ( sudo swapon -s | grep \"/swapfile\" ) ) || \
 				( \
-					( ${DEBUG} && sudo cat /etc/fstab ) &&
-					( sudo cat /etc/fstab | grep /swapfile ) || \
-					( echo \"/swapfile swap swap sw 0 0\" | sudo tee -a /etc/fstab ) \
-				) \
-			)"
+					sudo swapoff -v /swapfile || true && \
+					sudo rm -f /swapfile && \
+					sudo dd if=/dev/zero of=/swapfile count=${MASTERS_SWAP} bs=1MiB && \
+					sudo chmod 600 /swapfile && \
+					sudo mkswap /swapfile && \
+					sudo swapon /swapfile && \
+					( \
+						( ${DEBUG} && sudo cat /etc/fstab ) &&
+						( sudo cat /etc/fstab | grep /swapfile ) || \
+						( echo \"/swapfile swap swap sw 0 0\" | sudo tee -a /etc/fstab ) \
+					) \
+				)"
+				
+			# If docker should be configured.
+			if ${CONFIGURE_DOCKER}
+			then
 			
-		# If docker should be configured.
-		if ${CONFIGURE_DOCKER}
-		then
-		
-			# Configures the docker as non-root.
-			${DEBUG} && echo "Configuring Docker as non-root for master ${MASTER_IP}"
-			ssh -oStrictHostKeyChecking=no -i ~/.ssh/aws_dcos_cluster_key centos@${MASTER_IP} \
-			'sudo usermod -aG docker $USER || true'
-		
-			# Puts the DCOS properties into context.
-			. /project/dcos_cli.properties
+				# Configures the docker as non-root.
+				${DEBUG} && echo "Configuring Docker as non-root for master ${MASTER_IP}"
+				ssh -oStrictHostKeyChecking=no -i ~/.ssh/aws_dcos_cluster_key centos@${MASTER_IP} \
+				'sudo usermod -aG docker $USER || true'
 			
-			# Logs docker in the repository.
-			${DEBUG} && echo "Logging docker in the repository."
-			ssh -oStrictHostKeyChecking=no -i ~/.ssh/aws_dcos_cluster_key \
-				centos@${MASTER_IP} \
-				"rm -f /home/centos/.docker/config.json && \
-					docker login -u ${DOCKER_USER} -p ${DOCKER_PASSWORD} ${DOCKER_REPOSITORY} && \
-					cd ~ && tar -czf private-docker.tar.gz .docker && \
-					sudo mv private-docker.tar.gz /etc/ && \
-					rm -f /home/centos/.docker/config.json"
-		
-		fi
-		
-		# If zone and region should be updated.
-		if ${CONFIGURE_PROMETHEUS}
-		then
-			# Configures prometheus.
-			${DEBUG} && echo "Configuring prometheus agents in master node ${MASTER_IP}"
-			ssh -oStrictHostKeyChecking=no -i ~/.ssh/aws_dcos_cluster_key \
-				centos@${MASTER_IP} \
-				"sudo yum install wget -y; \
-					wget https://github.com/prometheus/node_exporter/releases/download/v1.0.1/node_exporter-1.0.1.linux-amd64.tar.gz; \
-					tar xvfz node_exporter-1.0.1.linux-amd64.tar.gz; \
-					rm node_exporter-1.0.1.linux-amd64.tar.gz; \
-					sudo cp node_exporter-1.0.1.linux-amd64/node_exporter /usr/local/bin/node_exporter; \
-					sudo rm -rf node_exporter-1.0.1.linux-amd64; \
-					sudo useradd --no-create-home node_exporter; \
-					cd /etc/systemd/system; \
-					sudo bash -c 'cat << 'EOF' > node-exporter.service
+				# Puts the DCOS properties into context.
+				. /project/dcos_cli.properties
+				
+				# Logs docker in the repository.
+				${DEBUG} && echo "Logging docker in the repository."
+				ssh -oStrictHostKeyChecking=no -i ~/.ssh/aws_dcos_cluster_key \
+					centos@${MASTER_IP} \
+					"rm -f /home/centos/.docker/config.json && \
+						docker login -u ${DOCKER_USER} -p ${DOCKER_PASSWORD} ${DOCKER_REPOSITORY} && \
+						cd ~ && tar -czf private-docker.tar.gz .docker && \
+						sudo mv private-docker.tar.gz /etc/ && \
+						rm -f /home/centos/.docker/config.json"
+			
+			fi
+			
+			# If zone and region should be updated.
+			if ${CONFIGURE_PROMETHEUS}
+			then
+				# Configures prometheus.
+				${DEBUG} && echo "Configuring prometheus agents in master node ${MASTER_IP}"
+				ssh -oStrictHostKeyChecking=no -i ~/.ssh/aws_dcos_cluster_key \
+					centos@${MASTER_IP} \
+					"sudo yum install wget -y; \
+						wget https://github.com/prometheus/node_exporter/releases/download/v1.0.1/node_exporter-1.0.1.linux-amd64.tar.gz; \
+						tar xvfz node_exporter-1.0.1.linux-amd64.tar.gz; \
+						rm node_exporter-1.0.1.linux-amd64.tar.gz; \
+						sudo cp node_exporter-1.0.1.linux-amd64/node_exporter /usr/local/bin/node_exporter; \
+						sudo rm -rf node_exporter-1.0.1.linux-amd64; \
+						sudo useradd --no-create-home node_exporter; \
+						cd /etc/systemd/system; \
+						sudo bash -c 'cat << 'EOF' > node-exporter.service
 [Unit]
 Description=Prometheus Node Exporter Service
 After=network.target
+StartLimitIntervalSec=0s
 [Service]
 User=node_exporter
 Group=node_exporter
 Type=simple
+Restart=always
+RestartSec=30
 ExecStart=/usr/local/bin/node_exporter
 [Install]
 WantedBy=multi-user.target
 EOF'; \
-					sudo systemctl daemon-reload; \
-					sudo systemctl start node-exporter; \
-					sudo systemctl enable node-exporter; \
-					sudo systemctl status node-exporter;"
+						sudo systemctl stop node-exporter; \
+						sudo systemctl daemon-reload; \
+						sudo systemctl enable node-exporter; \
+						sudo systemctl start node-exporter; \
+						sudo systemctl status node-exporter;" || true
+			fi
+		
 		fi
-	
-			
+
 	done
 	
 fi
