@@ -13,6 +13,7 @@ UPDATE_ZONE_REGION=false
 DO_NOT_UPDATE_SWAP=true
 MASTERS_SWAP=16000
 AGENTS_SWAP=32000
+CONFIGURE_TCP=false
 CONFIGURE_PROMETHEUS=false
 CONFIGURE_DOCKER=false
 CONFIGURE_AGENTS=true
@@ -85,6 +86,11 @@ while :; do
 		# If Prometheus should be configured.
 		--configure-prometheus)
 			CONFIGURE_PROMETHEUS=true
+			;;
+
+		# If TCP should be configured.
+		--configure-tcp)
+			CONFIGURE_TCP=true
 			;;
 
 		# If zone and region should be updated.
@@ -446,6 +452,24 @@ then
 					"sudo iptables -A OUTPUT -d 169.254.169.254 -p tcp -m multiport --dports 80,443 -j DROP"
 			fi
 			
+	
+			# If TCP should be configured.
+			if ${CONFIGURE_TCP}
+			then
+				# Configures prometheus.
+				${DEBUG} && echo "Configuring sysctl.conf in agent node ${AGENT_IP}"
+				ssh -oStrictHostKeyChecking=no -i ~/.ssh/aws_dcos_cluster_key \
+					centos@${AGENT_IP} \
+					"sudo bash -c 'cat << 'EOF' > /etc/sysctl.conf
+net.core.rmem_max = 16777216 
+net.core.wmem_max = 16777216 
+net.ipv4.tcp_rmem = 4096 87380 16777216
+net.ipv4.tcp_wmem = 4096 65536 16777216
+net.core.netdev_max_backlog = 30000
+net.ipv4.tcp_congestion_control = cubic
+EOF'; \
+						sudo sysctl -p"
+			fi
 			
 			# If zone and region should be updated.
 			if ${CONFIGURE_PROMETHEUS}
@@ -587,6 +611,25 @@ then
 						sudo mv private-docker.tar.gz /etc/ && \
 						rm -f /home/centos/.docker/config.json"
 			
+			fi
+			
+			
+			# If TCP should be configured.
+			if ${CONFIGURE_TCP}
+			then
+				# Configures prometheus.
+				${DEBUG} && echo "Configuring sysctl.conf in agent node ${AGENT_IP}"
+				ssh -oStrictHostKeyChecking=no -i ~/.ssh/aws_dcos_cluster_key \
+					centos@${MASTER_IP} \
+					"sudo bash -c 'cat << 'EOF' > /etc/sysctl.conf'
+net.core.rmem_max = 16777216 
+net.core.wmem_max = 16777216 
+net.ipv4.tcp_rmem = 4096 87380 16777216
+net.ipv4.tcp_wmem = 4096 65536 16777216
+net.core.netdev_max_backlog = 30000
+net.ipv4.tcp_congestion_control = cubic
+EOF'; \
+						sudo sysctl -p"
 			fi
 			
 			# If zone and region should be updated.
