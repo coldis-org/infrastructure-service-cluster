@@ -460,13 +460,16 @@ then
 				${DEBUG} && echo "Configuring sysctl.conf in agent node ${AGENT_IP}"
 				ssh -oStrictHostKeyChecking=no -i ~/.ssh/aws_dcos_cluster_key \
 					centos@${AGENT_IP} \
-					"sudo bash -c 'cat << 'EOF' > /etc/sysctl.conf
-net.core.rmem_max = 16777216 
-net.core.wmem_max = 16777216 
+					"sudo /sbin/modprobe tcp_htcp && \
+						sudo bash -c 'cat << 'EOF' > /etc/sysctl.conf
+net.core.rmem_max = 16777216
+net.core.wmem_max = 16777216
 net.ipv4.tcp_rmem = 4096 87380 16777216
 net.ipv4.tcp_wmem = 4096 65536 16777216
-net.core.netdev_max_backlog = 30000
-net.ipv4.tcp_congestion_control = cubic
+#net.core.netdev_max_backlog = 2000
+net.ipv4.tcp_congestion_control = htcp
+#net.ipv4.tcp_mtu_probing=1
+#net.core.default_qdisc = fq
 EOF'; \
 						sudo sysctl -p"
 			fi
@@ -621,13 +624,16 @@ then
 				${DEBUG} && echo "Configuring sysctl.conf in agent node ${AGENT_IP}"
 				ssh -oStrictHostKeyChecking=no -i ~/.ssh/aws_dcos_cluster_key \
 					centos@${MASTER_IP} \
-					"sudo bash -c 'cat << 'EOF' > /etc/sysctl.conf'
-net.core.rmem_max = 16777216 
-net.core.wmem_max = 16777216 
+					"sudo /sbin/modprobe tcp_htcp && \
+						sudo bash -c 'cat << 'EOF' > /etc/sysctl.conf
+net.core.rmem_max = 16777216
+net.core.wmem_max = 16777216
 net.ipv4.tcp_rmem = 4096 87380 16777216
 net.ipv4.tcp_wmem = 4096 65536 16777216
-net.core.netdev_max_backlog = 30000
-net.ipv4.tcp_congestion_control = cubic
+#net.core.netdev_max_backlog = 2000
+net.ipv4.tcp_congestion_control = htcp
+#net.ipv4.tcp_mtu_probing=1
+#net.core.default_qdisc = fq
 EOF'; \
 						sudo sysctl -p"
 			fi
