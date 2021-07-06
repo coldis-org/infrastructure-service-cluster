@@ -13,7 +13,7 @@ UPDATE_ZONE_REGION=false
 DO_NOT_UPDATE_SWAP=true
 MASTERS_SWAP=16000
 AGENTS_SWAP=32000
-CONFIGURE_TCP=false
+CONFIGURE_SYSCTL=false
 CONFIGURE_PROMETHEUS=false
 CONFIGURE_DOCKER=false
 CONFIGURE_AGENTS=true
@@ -88,9 +88,9 @@ while :; do
 			CONFIGURE_PROMETHEUS=true
 			;;
 
-		# If TCP should be configured.
-		--configure-tcp)
-			CONFIGURE_TCP=true
+		# If sysctl should be configured.
+		--configure-sysctl)
+			CONFIGURE_SYSCTL=true
 			;;
 
 		# If zone and region should be updated.
@@ -454,27 +454,126 @@ then
 			
 	
 			# If TCP should be configured.
-			if ${CONFIGURE_TCP}
+			if ${CONFIGURE_SYSCTL}
 			then
 				# Configures prometheus.
 				${DEBUG} && echo "Configuring sysctl.conf in agent node ${AGENT_IP}"
 				ssh -oStrictHostKeyChecking=no -i ~/.ssh/aws_dcos_cluster_key \
 					centos@${AGENT_IP} \
 					"sudo /sbin/modprobe tcp_htcp && \
+						(sudo /sbin/modprobe tcp_bbr || true) && \
 						sudo bash -c 'cat << 'EOF' > /etc/sysctl.conf
-net.core.rmem_max = 16777216
-net.core.wmem_max = 16777216
-net.ipv4.tcp_rmem = 4096 87380 16777216
-net.ipv4.tcp_wmem = 4096 65536 16777216
-#net.core.netdev_max_backlog = 2000
+# Do less swapping
+vm.swappiness = 30
+vm.dirty_ratio = 30
+vm.dirty_background_ratio = 5
+
+# Use BBR TCP congestion control and set tcp_notsent_lowat to 16384 to ensure HTTP/2 prioritization works optimally
+# Fall-back to htcp if bbr is unavailable (older kernels)
 net.ipv4.tcp_congestion_control = htcp
-#net.ipv4.tcp_mtu_probing=1
-#net.core.default_qdisc = fq
+net.ipv4.tcp_congestion_control = bbr
+net.ipv4.tcp_notsent_lowat = 16384
+    
+# For servers with tcp-heavy workloads, enable fq queue management scheduler (kernel > 3.12)
+net.core.default_qdisc = fq
+
+# Turn on the tcp_window_scaling
+net.ipv4.tcp_window_scaling = 1
+
+# Increase the read-buffer space allocatable
+net.ipv4.tcp_rmem = 8192 87380 16777216
+net.ipv4.udp_rmem_min = 16384
+net.core.rmem_default = 262144
+net.core.rmem_max = 16777216
+
+# Increase the write-buffer-space allocatable
+net.ipv4.tcp_wmem = 8192 65536 16777216
+net.ipv4.udp_wmem_min = 16384
+net.core.wmem_default = 262144
+net.core.wmem_max = 16777216
+
+# Increase number of incoming connections
+net.core.somaxconn = 32768
+
+# Increase number of incoming connections backlog
+net.core.netdev_max_backlog = 16384
+net.core.dev_weight = 64
+
+# Increase the maximum amount of option memory buffers
+net.core.optmem_max = 65535
+
+# Increase the tcp-time-wait buckets pool size to prevent simple DOS attacks
+net.ipv4.tcp_max_tw_buckets = 1440000
+
+# try to reuse time-wait connections, but dont recycle them (recycle can break clients behind NAT)
+net.ipv4.tcp_tw_recycle = 0
+net.ipv4.tcp_tw_reuse = 1
+
+# Limit number of orphans, each orphan can eat up to 16M (max wmem) of unswappable memory
+net.ipv4.tcp_max_orphans = 16384
+net.ipv4.tcp_orphan_retries = 0
+
+# Limit the maximum memory used to reassemble IP fragments (CVE-2018-5391)
+net.ipv4.ipfrag_low_thresh = 196608
+net.ipv6.ip6frag_low_thresh = 196608
+net.ipv4.ipfrag_high_thresh = 262144
+net.ipv6.ip6frag_high_thresh = 262144
+
+# dont cache ssthresh from previous connection
+net.ipv4.tcp_no_metrics_save = 1
+net.ipv4.tcp_moderate_rcvbuf = 1
+
+# Increase size of RPC datagram queue length
+net.unix.max_dgram_qlen = 50
+
+# Dont allow the arp table to become bigger than this
+net.ipv4.neigh.default.gc_thresh3 = 2048
+
+# Tell the gc when to become aggressive with arp table cleaning.
+# Adjust this based on size of the LAN. 1024 is suitable for most /24 networks
+net.ipv4.neigh.default.gc_thresh2 = 1024
+
+# Adjust where the gc will leave arp table alone - set to 32.
+net.ipv4.neigh.default.gc_thresh1 = 32
+
+# Adjust to arp table gc to clean-up more often
+net.ipv4.neigh.default.gc_interval = 30
+
+# Increase TCP queue length
+net.ipv4.neigh.default.proxy_qlen = 96
+net.ipv4.neigh.default.unres_qlen = 6
+
+# Enable Explicit Congestion Notification (RFC 3168), disable it if it doesnt work for you
+net.ipv4.tcp_ecn = 1
+net.ipv4.tcp_reordering = 3
+
+# How many times to retry killing an alive TCP connection
+net.ipv4.tcp_retries2 = 15
+net.ipv4.tcp_retries1 = 3
+
+# Avoid falling back to slow start after a connection goes idle
+# keeps our cwnd large with the keep alive connections (kernel > 3.6)
+net.ipv4.tcp_slow_start_after_idle = 0
+
+# Allow the TCP fastopen flag to be used, beware some firewalls do not like TFO! (kernel > 3.7)
+net.ipv4.tcp_fastopen = 3
+
+# This will enusre that immediatly subsequent connections use the new values
+net.ipv4.route.flush = 1
+net.ipv6.route.flush = 1
+
+# MTU probing (jumbo frames)
+net.ipv4.tcp_mtu_probing=1
 EOF'; \
 						sudo sysctl -p"
 			fi
 			
-			# If zone and region should be updated.
+			# If zone and regio# Do less swapping
+vm.swappiness = 30
+vm.dirty_ratio = 30
+vm.dirty_background_ratio = 5
+
+n should be updated.
 			if ${CONFIGURE_PROMETHEUS}
 			then
 				# Configures prometheus.
@@ -618,22 +717,116 @@ then
 			
 			
 			# If TCP should be configured.
-			if ${CONFIGURE_TCP}
+			if ${CONFIGURE_SYSCTL}
 			then
 				# Configures prometheus.
 				${DEBUG} && echo "Configuring sysctl.conf in agent node ${AGENT_IP}"
 				ssh -oStrictHostKeyChecking=no -i ~/.ssh/aws_dcos_cluster_key \
 					centos@${MASTER_IP} \
 					"sudo /sbin/modprobe tcp_htcp && \
+						(sudo /sbin/modprobe tcp_bbr || true) && \
 						sudo bash -c 'cat << 'EOF' > /etc/sysctl.conf
-net.core.rmem_max = 16777216
-net.core.wmem_max = 16777216
-net.ipv4.tcp_rmem = 4096 87380 16777216
-net.ipv4.tcp_wmem = 4096 65536 16777216
-#net.core.netdev_max_backlog = 2000
+# Do less swapping
+vm.swappiness = 30
+vm.dirty_ratio = 30
+vm.dirty_background_ratio = 5
+
+# Use BBR TCP congestion control and set tcp_notsent_lowat to 16384 to ensure HTTP/2 prioritization works optimally
+# Fall-back to htcp if bbr is unavailable (older kernels)
 net.ipv4.tcp_congestion_control = htcp
-#net.ipv4.tcp_mtu_probing=1
-#net.core.default_qdisc = fq
+net.ipv4.tcp_congestion_control = bbr
+net.ipv4.tcp_notsent_lowat = 16384
+    
+# For servers with tcp-heavy workloads, enable fq queue management scheduler (kernel > 3.12)
+net.core.default_qdisc = fq
+
+# Turn on the tcp_window_scaling
+net.ipv4.tcp_window_scaling = 1
+
+# Increase the read-buffer space allocatable
+net.ipv4.tcp_rmem = 8192 87380 16777216
+net.ipv4.udp_rmem_min = 16384
+net.core.rmem_default = 262144
+net.core.rmem_max = 16777216
+
+# Increase the write-buffer-space allocatable
+net.ipv4.tcp_wmem = 8192 65536 16777216
+net.ipv4.udp_wmem_min = 16384
+net.core.wmem_default = 262144
+net.core.wmem_max = 16777216
+
+# Increase number of incoming connections
+net.core.somaxconn = 32768
+
+# Increase number of incoming connections backlog
+net.core.netdev_max_backlog = 16384
+net.core.dev_weight = 64
+
+# Increase the maximum amount of option memory buffers
+net.core.optmem_max = 65535
+
+# Increase the tcp-time-wait buckets pool size to prevent simple DOS attacks
+net.ipv4.tcp_max_tw_buckets = 1440000
+
+# try to reuse time-wait connections, but dont recycle them (recycle can break clients behind NAT)
+net.ipv4.tcp_tw_recycle = 0
+net.ipv4.tcp_tw_reuse = 1
+
+# Limit number of orphans, each orphan can eat up to 16M (max wmem) of unswappable memory
+net.ipv4.tcp_max_orphans = 16384
+net.ipv4.tcp_orphan_retries = 0
+
+# Limit the maximum memory used to reassemble IP fragments (CVE-2018-5391)
+net.ipv4.ipfrag_low_thresh = 196608
+net.ipv6.ip6frag_low_thresh = 196608
+net.ipv4.ipfrag_high_thresh = 262144
+net.ipv6.ip6frag_high_thresh = 262144
+
+# dont cache ssthresh from previous connection
+net.ipv4.tcp_no_metrics_save = 1
+net.ipv4.tcp_moderate_rcvbuf = 1
+
+# Increase size of RPC datagram queue length
+net.unix.max_dgram_qlen = 50
+
+# Dont allow the arp table to become bigger than this
+net.ipv4.neigh.default.gc_thresh3 = 2048
+
+# Tell the gc when to become aggressive with arp table cleaning.
+# Adjust this based on size of the LAN. 1024 is suitable for most /24 networks
+net.ipv4.neigh.default.gc_thresh2 = 1024
+
+# Adjust where the gc will leave arp table alone - set to 32.
+net.ipv4.neigh.default.gc_thresh1 = 32
+
+# Adjust to arp table gc to clean-up more often
+net.ipv4.neigh.default.gc_interval = 30
+
+# Increase TCP queue length
+net.ipv4.neigh.default.proxy_qlen = 96
+net.ipv4.neigh.default.unres_qlen = 6
+
+# Enable Explicit Congestion Notification (RFC 3168), disable it if it doesnt work for you
+net.ipv4.tcp_ecn = 1
+net.ipv4.tcp_reordering = 3
+
+# How many times to retry killing an alive TCP connection
+net.ipv4.tcp_retries2 = 15
+net.ipv4.tcp_retries1 = 3
+
+# Avoid falling back to slow start after a connection goes idle
+# keeps our cwnd large with the keep alive connections (kernel > 3.6)
+net.ipv4.tcp_slow_start_after_idle = 0
+
+# Allow the TCP fastopen flag to be used, beware some firewalls do not like TFO! (kernel > 3.7)
+net.ipv4.tcp_fastopen = 3
+
+# This will enusre that immediatly subsequent connections use the new values
+net.ipv4.route.flush = 1
+net.ipv6.route.flush = 1
+
+# MTU probing (jumbo frames)
+net.ipv4.tcp_mtu_probing=1
 EOF'; \
 						sudo sysctl -p"
 			fi
