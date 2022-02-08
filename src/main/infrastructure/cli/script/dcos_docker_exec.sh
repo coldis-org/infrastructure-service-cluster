@@ -101,17 +101,15 @@ ${DEBUG} && echo "EXTRA_ARGUMENTS=${EXTRA_ARGUMENTS}"
 ${DEBUG} && echo "COMMAND=${COMMAND}"
 
 # Gets the agent information.
-APP_INFO="$(dcos marathon app show ${APP_ID} |  sed -e ':a' -e 'N' -e '$!ba' -e 's/[\\\r\n\t]//g')"
+APP_INFO=$(dcos marathon app show ${APP_ID})
 ${DEBUG} && echo "APP_INFO=${APP_INFO}"
-APP_AGENT_ID=$(echo ${APP_INFO} | jq -r ".tasks[0].slaveId")
+APP_AGENT_ID=$(printf "%s" "${APP_INFO}" | jq -r ".tasks[0].slaveId")
 ${DEBUG} && echo "APP_AGENT_ID=${APP_AGENT_ID}"
-APP_TASK_ID=$(echo ${APP_INFO} | jq -r ".tasks[0].id")
+APP_TASK_ID=$(printf "%s" "${APP_INFO}" | jq -r ".tasks[0].id")
 ${DEBUG} && echo "APP_TASK_ID=${APP_TASK_ID}"
-APP_TASK_INFO=$(dcos task list --json ${APP_TASK_ID} |  sed -e ':a' -e 'N' -e '$!ba' -e 's/[\\\r\n\t]//g')
+APP_TASK_INFO=$(dcos task list --json ${APP_TASK_ID})
 ${DEBUG} && echo "APP_TASK_INFO=${APP_TASK_INFO}"
-APP_CONTAINER_ID=mesos-`echo ${APP_TASK_INFO} | jq -r ".[0].statuses[] | \
-	select(.state == \"TASK_RUNNING\") | \
-	.container_status.container_id.value"`
+APP_CONTAINER_ID="mesos-$(printf "%s" "${APP_TASK_INFO}" | jq -r ".[0].statuses[] | select(.state == \"TASK_RUNNING\") | .container_status.container_id.value")"
 ${DEBUG} && echo "APP_CONTAINER_ID=${APP_CONTAINER_ID}"
 
 AGENT_IP=
@@ -124,17 +122,14 @@ then
 	then
 		# Gets the agent IP.
 		${DEBUG} && echo "Getting private agent IP"
-		AGENT_IP=$(echo ${APP_INFO} | jq -r ".tasks[0].host")
+		AGENT_IP=$(printf "%s" "${APP_INFO}" | jq -r ".tasks[0].host")
 	# If public IP should be used.
 	else 
 		# Gets the agent IP.
 		${DEBUG} && echo "Getting public agent IP"
-		NODE_LIST=$( dcos node list --json | sed -e ':a' -e 'N' -e '$!ba' -e 's/[\\\r\n\t]//g' )
+		NODE_LIST=$(dcos node list --json)
 		${DEBUG} && echo "NODE_LIST=${NODE_LIST}"
-		AGENT_IP=$( echo ${NODE_LIST} | \
-			jq -r ".[] | \
-			select(.id == \"${APP_AGENT_ID}\") | \
-			.public_ips[0]" )
+		AGENT_IP=$(printf "%s" "${NODE_LIST}" | jq -r ".[] | select(.id == \"${APP_AGENT_ID}\") | .public_ips[0]")
 	fi
 fi
 ${DEBUG} && echo "AGENT_IP=${AGENT_IP}"

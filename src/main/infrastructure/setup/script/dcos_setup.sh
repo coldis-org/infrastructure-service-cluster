@@ -13,6 +13,7 @@ UPDATE_ZONE_REGION=false
 DO_NOT_UPDATE_SWAP=true
 MASTERS_SWAP=16000
 AGENTS_SWAP=32000
+CONFIGURE_ULIMIT=false
 CONFIGURE_SYSCTL=false
 CONFIGURE_PROMETHEUS=false
 CONFIGURE_DOCKER=false
@@ -21,6 +22,7 @@ CONFIGURE_MASTERS=true
 RESTART_AGENTS=false
 RESTART_AGENTS_HARD=false
 STOP_BOOTSTRAP=true
+YUM_NOT_UPDATE=true
 INIT=false
 UPGRADE=
 PLAN=false
@@ -88,6 +90,11 @@ while :; do
 			CONFIGURE_PROMETHEUS=true
 			;;
 
+		# If ulimit should be configured.
+		--configure-ulimit)
+			CONFIGURE_ULIMIT=true
+			;;
+
 		# If sysctl should be configured.
 		--configure-sysctl)
 			CONFIGURE_SYSCTL=true
@@ -112,6 +119,11 @@ while :; do
 		# Keep bootstrap parameter.
 		--keep-bootstrap)
 			STOP_BOOTSTRAP=false
+			;;
+			
+		# Yum update.
+		--yum-update)
+			YUM_NOT_UPDATE=false
 			;;
 
 		# Init terraform.
@@ -305,6 +317,13 @@ then
 			then
 				PUBLIC_AGENT=true
 			fi
+			
+			# Yum update.
+			${DEBUG} && echo "Updating yum for agent ${AGENT_IP}"
+			${YUM_NOT_UPDATE} || \
+			ssh -oStrictHostKeyChecking=no -i ~/.ssh/aws_dcos_cluster_key \
+			centos@${AGENT_IP} \
+			"sudo yum update -y"
 		
 			# Configures the swap.
 			${DEBUG} && echo "Configuring swap for agent ${AGENT_IP}"
@@ -326,7 +345,6 @@ then
 					)
 				)"
 			
-			
 			# If docker should be configured.
 			if ${CONFIGURE_DOCKER}
 			then
@@ -345,10 +363,19 @@ then
 						"sudo rm -f /etc/docker/daemon.json && \
 							rm -f /home/centos/.docker/config.json"
 				
+				
 				# For each docker repository.
+				if [ ! -z "${DOCKER_INSECURE_REPOSITORIES}" ]
+				then
+					# Configures insecure repositories.
+					${DEBUG} && echo "Logging docker in the repository."
+					ssh -oStrictHostKeyChecking=no -i ~/.ssh/aws_dcos_cluster_key \
+						centos@${AGENT_IP} \
+						"echo '{ \"insecure-registries\": [ ${DOCKER_INSECURE_REPOSITORIES} ] }' | sudo tee /etc/docker/daemon.json && \
+							cat /etc/docker/daemon.json" || true
+				fi
 				for DOCKER_REPOSITORY in $(echo ${DOCKER_REPOSITORIES} | sed -e 's/,/\n/g')
 				do
-				
 					# Logs docker in the repository.
 					${DEBUG} && echo "Logging docker in the repository."
 					ssh -oStrictHostKeyChecking=no -i ~/.ssh/aws_dcos_cluster_key \
@@ -358,7 +385,6 @@ then
 							(echo -n | openssl s_client -connect ${DOCKER_REPOSITORY}:443 -showcerts -servername ${DOCKER_REPOSITORY} | \
 								sed -ne '/-BEGIN CERTIFICATE-/,/-END CERTIFICATE-/p' | sudo tee /etc/docker/certs.d/${DOCKER_REPOSITORY}/ca.crt) && \
 							docker login -u ${DOCKER_USER} -p ${DOCKER_PASSWORD} ${DOCKER_REPOSITORY}" || true
-				
 				done
 				
 				# Finishes docker config.
@@ -453,7 +479,7 @@ then
 			fi
 			
 	
-			# If TCP should be configured.
+			# If sysctl should be configured.
 			if ${CONFIGURE_SYSCTL}
 			then
 				# Configures prometheus.
@@ -464,116 +490,185 @@ then
 						(sudo /sbin/modprobe tcp_bbr || true) && \
 						sudo bash -c 'cat << 'EOF' > /etc/sysctl.conf
 # Do less swapping
-vm.swappiness = 30
-vm.dirty_ratio = 30
-vm.dirty_background_ratio = 5
+vm.swappiness = 37
+vm.dirty_background_ratio = 17
+vm.dirty_ratio = 29
+vm.vfs_cache_pressure = 79
 
-# Use BBR TCP congestion control and set tcp_notsent_lowat to 16384 to ensure HTTP/2 prioritization works optimally
-# Fall-back to htcp if bbr is unavailable (older kernels)
+# Increasing max memory areas
+vm.max_map_count = 1966080
+
+# Increase system file descriptor limit
+kernel.pid_max = 1048576
+fs.file-max = 1048576
+fs.aio-max-nr = 524288
+fs.nr_open = 1048576
+
+# Increasing messaging
+kernel.msgmnb = 131072
+kernel.msgmax = 131072
+
+# Decrease the time default value for connections to keep alive
+net.ipv4.tcp_keepalive_time = 3600
+net.ipv4.tcp_keepalive_intvl = 20
+net.ipv4.tcp_keepalive_probes = 10
+net.ipv4.tcp_fin_timeout = 17
+
+# Increase allowed local port range
+net.ipv4.ip_local_port_range = 1024 65535
+
+# Congestion control and queuing
+#net.ipv4.tcp_congestion_control = cubic
 net.ipv4.tcp_congestion_control = htcp
-net.ipv4.tcp_congestion_control = bbr
-net.ipv4.tcp_notsent_lowat = 16384
-    
-# For servers with tcp-heavy workloads, enable fq queue management scheduler (kernel > 3.12)
+#net.ipv4.tcp_congestion_control = bbr
 net.core.default_qdisc = fq
+net.ipv4.tcp_notsent_lowat = 16384
 
-# Turn on the tcp_window_scaling
+# Turn on the tcp_window_scaling and Jumbo frames
 net.ipv4.tcp_window_scaling = 1
+net.ipv4.tcp_mtu_probing = 1
 
-# Increase the read-buffer space allocatable
-net.ipv4.tcp_rmem = 8192 87380 16777216
-net.ipv4.udp_rmem_min = 16384
+# Increase socket buffers
+net.ipv4.tcp_rmem = 4096 87380 4194304
+net.ipv4.tcp_wmem = 4096 65536 4194304
 net.core.rmem_default = 262144
-net.core.rmem_max = 16777216
-
-# Increase the write-buffer-space allocatable
-net.ipv4.tcp_wmem = 8192 65536 16777216
-net.ipv4.udp_wmem_min = 16384
 net.core.wmem_default = 262144
-net.core.wmem_max = 16777216
+net.core.rmem_max = 8388608
+net.core.wmem_max = 8388608
+net.core.optmem_max = 8388608
 
-# Increase number of incoming connections
-net.core.somaxconn = 32768
-
-# Increase number of incoming connections backlog
-net.core.netdev_max_backlog = 16384
-net.core.dev_weight = 64
-
-# Increase the maximum amount of option memory buffers
-net.core.optmem_max = 65535
-
-# Increase the tcp-time-wait buckets pool size to prevent simple DOS attacks
-net.ipv4.tcp_max_tw_buckets = 1440000
-
-# try to reuse time-wait connections, but dont recycle them (recycle can break clients behind NAT)
-net.ipv4.tcp_tw_recycle = 0
+# Time wait config
+net.ipv4.tcp_max_tw_buckets = 1048576
 net.ipv4.tcp_tw_reuse = 1
 
-# Limit number of orphans, each orphan can eat up to 16M (max wmem) of unswappable memory
-net.ipv4.tcp_max_orphans = 16384
-net.ipv4.tcp_orphan_retries = 0
+# Backlogs
+net.core.netdev_max_backlog = 524284
+net.core.somaxconn = 65535
+net.unix.max_dgram_qlen = 1024
+
+# SYN config
+net.ipv4.tcp_syncookies = 1
+net.ipv4.tcp_syn_retries = 5
+net.ipv4.tcp_synack_retries = 5
+net.ipv4.tcp_max_syn_backlog = 65535
+
+# Enable timestamps as defined in RFC1323: 
+net.ipv4.tcp_timestamps = 1 
+
+# Protect Against TCP Time-Wait 
+net.ipv4.tcp_rfc1337 = 1
 
 # Limit the maximum memory used to reassemble IP fragments (CVE-2018-5391)
+# Default: ipfrag_low_thresh=3145728, ipfrag_high_thresh=4194304
 net.ipv4.ipfrag_low_thresh = 196608
 net.ipv6.ip6frag_low_thresh = 196608
 net.ipv4.ipfrag_high_thresh = 262144
 net.ipv6.ip6frag_high_thresh = 262144
 
-# dont cache ssthresh from previous connection
-net.ipv4.tcp_no_metrics_save = 1
-net.ipv4.tcp_moderate_rcvbuf = 1
-
-# Increase size of RPC datagram queue length
-net.unix.max_dgram_qlen = 50
-
-# Dont allow the arp table to become bigger than this
-net.ipv4.neigh.default.gc_thresh3 = 2048
-
-# Tell the gc when to become aggressive with arp table cleaning.
-# Adjust this based on size of the LAN. 1024 is suitable for most /24 networks
-net.ipv4.neigh.default.gc_thresh2 = 1024
-
-# Adjust where the gc will leave arp table alone - set to 32.
-net.ipv4.neigh.default.gc_thresh1 = 32
-
-# Adjust to arp table gc to clean-up more often
-net.ipv4.neigh.default.gc_interval = 30
-
-# Increase TCP queue length
-net.ipv4.neigh.default.proxy_qlen = 96
-net.ipv4.neigh.default.unres_qlen = 6
-
-# Enable Explicit Congestion Notification (RFC 3168), disable it if it doesnt work for you
-net.ipv4.tcp_ecn = 1
-net.ipv4.tcp_reordering = 3
-
-# How many times to retry killing an alive TCP connection
-net.ipv4.tcp_retries2 = 15
-net.ipv4.tcp_retries1 = 3
-
-# Avoid falling back to slow start after a connection goes idle
-# keeps our cwnd large with the keep alive connections (kernel > 3.6)
+# Enabling fast open and disabling slow start
 net.ipv4.tcp_slow_start_after_idle = 0
-
-# Allow the TCP fastopen flag to be used, beware some firewalls do not like TFO! (kernel > 3.7)
 net.ipv4.tcp_fastopen = 3
+
+# Orphans
+net.ipv4.tcp_max_orphans = 16384
+net.ipv4.tcp_orphan_retries = 3
+
+# Increasing GC threshold.
+# Defaults: 128/512/1024
+net.ipv6.neigh.default.gc_thresh1 = 1024
+net.ipv6.neigh.default.gc_thresh2 = 4096
+net.ipv6.neigh.default.gc_thresh3 = 8192
 
 # This will enusre that immediatly subsequent connections use the new values
 net.ipv4.route.flush = 1
 net.ipv6.route.flush = 1
 
-# MTU probing (jumbo frames)
-net.ipv4.tcp_mtu_probing=1
 EOF'; \
 						sudo sysctl -p"
 			fi
 			
-			# If zone and regio# Do less swapping
-vm.swappiness = 30
-vm.dirty_ratio = 30
-vm.dirty_background_ratio = 5
+			# If ulimit should be configured.
+			if ${CONFIGURE_ULIMIT}
+			then
+				# Configures prometheus.
+				${DEBUG} && echo "Configuring /etc/security/limits.conf in agent node ${AGENT_IP}"
+				ssh -oStrictHostKeyChecking=no -i ~/.ssh/aws_dcos_cluster_key \
+					centos@${AGENT_IP} \
+					"sudo rm -f /etc/security/limits.d/20-nproc.conf; \
+						sudo bash -c 'cat << 'EOF' > /etc/security/limits.conf
 
-n should be updated.
+# /etc/security/limits.conf
+#
+#This file sets the resource limits for the users logged in via PAM.
+#It does not affect resource limits of the system services.
+#
+#Also note that configuration files in /etc/security/limits.d directory,
+#which are read in alphabetical order, override the settings in this
+#file in case the domain is the same or more specific.
+#That means for example that setting a limit for wildcard domain here
+#can be overriden with a wildcard setting in a config file in the
+#subdirectory, but a user specific setting here can be overriden only
+#with a user specific setting in the subdirectory.
+#
+#Each line describes a limit for a user in the form:
+#
+#<domain>        <type>  <item>  <value>
+#
+#Where:
+#<domain> can be:
+#        - a user name
+#        - a group name, with @group syntax
+#        - the wildcard *, for default entry
+#        - the wildcard %, can be also used with %group syntax,
+#                 for maxlogin limit
+#
+#<type> can have the two values:
+#        - soft for enforcing the soft limits
+#        - hard for enforcing hard limits
+#
+#<item> can be one of the following:
+#        - core - limits the core file size (KB)
+#        - data - max data size (KB)
+#        - fsize - maximum filesize (KB)
+#        - memlock - max locked-in-memory address space (KB)
+#        - nofile - max number of open file descriptors
+#        - rss - max resident set size (KB)
+#        - stack - max stack size (KB)
+#        - cpu - max CPU time (MIN)
+#        - nproc - max number of processes
+#        - as - address space limit (KB)
+#        - maxlogins - max number of logins for this user
+#        - maxsyslogins - max number of logins on the system
+#        - priority - the priority to run user process with
+#        - locks - max number of file locks the user can hold
+#        - sigpending - max number of pending signals
+#        - msgqueue - max memory used by POSIX message queues (bytes)
+#        - nice - max nice priority allowed to raise to values: [-20, 19]
+#        - rtprio - max realtime priority
+#
+#<domain>      <type>  <item>         <value>
+#
+
+#*               soft    core            0
+#*               hard    rss             10000
+#@student        hard    nproc           20
+#@faculty        soft    nproc           20
+#@faculty        hard    nproc           50
+#ftp             hard    nproc           0
+#@student        -       maxlogins       4
+
+*          soft    nproc     32768
+*          hard    nproc     65536
+root       soft    nproc     unlimited
+root       hard    nproc     unlimited
+
+*          soft    nofile     65536
+*          hard    nofile     131072
+
+EOF'"
+			fi
+			
+			# If zone and region should be updated.
 			if ${CONFIGURE_PROMETHEUS}
 			then
 				# Configures prometheus.
@@ -670,6 +765,13 @@ then
 		if ssh -oStrictHostKeyChecking=no -i ~/.ssh/aws_dcos_cluster_key \
 			centos@${MASTER_IP} "ls"
 		then
+		
+			# Yum update.
+			${DEBUG} && echo "Updating yum for agent ${MASTER_IP}"
+			${YUM_NOT_UPDATE} || \
+			ssh -oStrictHostKeyChecking=no -i ~/.ssh/aws_dcos_cluster_key \
+			centos@${MASTER_IP} \
+			"sudo yum update -y"
 
 			# Configures the swap.
 			${DEBUG} && echo "Configuring swap for master ${MASTER_IP}"
@@ -703,132 +805,227 @@ then
 				# Puts the DCOS properties into context.
 				. /project/dcos_cli.properties
 				
-				# Logs docker in the repository.
-				${DEBUG} && echo "Logging docker in the repository."
+				# For each docker repository.
+				if [ ! -z "${DOCKER_INSECURE_REPOSITORIES}" ]
+				then
+					# Configures insecure repositories.
+					${DEBUG} && echo "Logging docker in the repository."
+					ssh -oStrictHostKeyChecking=no -i ~/.ssh/aws_dcos_cluster_key \
+						centos@${MASTER_IP} \
+						"echo '{ \"insecure-registries\": [ ${DOCKER_INSECURE_REPOSITORIES} ] }' | sudo tee /etc/docker/daemon.json && \
+							cat /etc/docker/daemon.json" || true
+				fi
+				for DOCKER_REPOSITORY in $(echo ${DOCKER_REPOSITORIES} | sed -e 's/,/\n/g')
+				do
+					# Logs docker in the repository.
+					${DEBUG} && echo "Logging docker in the repository."
+					ssh -oStrictHostKeyChecking=no -i ~/.ssh/aws_dcos_cluster_key \
+						centos@${MASTER_IP} \
+						"sudo mkdir -p /etc/docker/certs.d/${DOCKER_REPOSITORY}/ && \
+							sudo rm -f /etc/docker/certs.d/${DOCKER_REPOSITORY}/* && \
+							(echo -n | openssl s_client -connect ${DOCKER_REPOSITORY}:443 -showcerts -servername ${DOCKER_REPOSITORY} | \
+								sed -ne '/-BEGIN CERTIFICATE-/,/-END CERTIFICATE-/p' | sudo tee /etc/docker/certs.d/${DOCKER_REPOSITORY}/ca.crt) && \
+							docker login -u ${DOCKER_USER} -p ${DOCKER_PASSWORD} ${DOCKER_REPOSITORY}" || true
+				done
+				
+				# Finishes docker config.
 				ssh -oStrictHostKeyChecking=no -i ~/.ssh/aws_dcos_cluster_key \
 					centos@${MASTER_IP} \
-					"rm -f /home/centos/.docker/config.json && \
-						docker login -u ${DOCKER_USER} -p ${DOCKER_PASSWORD} ${DOCKER_REPOSITORY} && \
-						cd ~ && tar -czf private-docker.tar.gz .docker && \
-						sudo mv private-docker.tar.gz /etc/ && \
-						rm -f /home/centos/.docker/config.json"
+						"cd ~ && tar -czf private-docker.tar.gz .docker && \
+							sudo mv private-docker.tar.gz /etc/ && \
+							rm -f /home/centos/.docker/config.json"
+						
 			
 			fi
 			
 			
-			# If TCP should be configured.
+			# If sysctl should be configured.
 			if ${CONFIGURE_SYSCTL}
 			then
 				# Configures prometheus.
-				${DEBUG} && echo "Configuring sysctl.conf in agent node ${AGENT_IP}"
+				${DEBUG} && echo "Configuring sysctl.conf in agent node ${MASTER_IP}"
 				ssh -oStrictHostKeyChecking=no -i ~/.ssh/aws_dcos_cluster_key \
 					centos@${MASTER_IP} \
 					"sudo /sbin/modprobe tcp_htcp && \
 						(sudo /sbin/modprobe tcp_bbr || true) && \
 						sudo bash -c 'cat << 'EOF' > /etc/sysctl.conf
 # Do less swapping
-vm.swappiness = 30
-vm.dirty_ratio = 30
-vm.dirty_background_ratio = 5
+vm.swappiness = 37
+vm.dirty_background_ratio = 17
+vm.dirty_ratio = 29
+vm.vfs_cache_pressure = 79
 
-# Use BBR TCP congestion control and set tcp_notsent_lowat to 16384 to ensure HTTP/2 prioritization works optimally
-# Fall-back to htcp if bbr is unavailable (older kernels)
+# Increasing max memory areas
+vm.max_map_count = 1966080
+
+# Increase system file descriptor limit
+kernel.pid_max = 1048576
+fs.file-max = 1048576
+fs.aio-max-nr = 524288
+fs.nr_open = 1048576
+
+# Increasing messaging
+kernel.msgmnb = 131072
+kernel.msgmax = 131072
+
+# Decrease the time default value for connections to keep alive
+net.ipv4.tcp_keepalive_time = 3600
+net.ipv4.tcp_keepalive_intvl = 20
+net.ipv4.tcp_keepalive_probes = 10
+net.ipv4.tcp_fin_timeout = 17
+
+# Increase allowed local port range
+net.ipv4.ip_local_port_range = 1024 65535
+
+# Congestion control and queuing
+#net.ipv4.tcp_congestion_control = cubic
 net.ipv4.tcp_congestion_control = htcp
-net.ipv4.tcp_congestion_control = bbr
-net.ipv4.tcp_notsent_lowat = 16384
-    
-# For servers with tcp-heavy workloads, enable fq queue management scheduler (kernel > 3.12)
+#net.ipv4.tcp_congestion_control = bbr
 net.core.default_qdisc = fq
+net.ipv4.tcp_notsent_lowat = 16384
 
-# Turn on the tcp_window_scaling
+# Turn on the tcp_window_scaling and Jumbo frames
 net.ipv4.tcp_window_scaling = 1
+net.ipv4.tcp_mtu_probing = 1
 
-# Increase the read-buffer space allocatable
-net.ipv4.tcp_rmem = 8192 87380 16777216
-net.ipv4.udp_rmem_min = 16384
+# Increase socket buffers
+net.ipv4.tcp_rmem = 4096 87380 4194304
+net.ipv4.tcp_wmem = 4096 65536 4194304
 net.core.rmem_default = 262144
-net.core.rmem_max = 16777216
-
-# Increase the write-buffer-space allocatable
-net.ipv4.tcp_wmem = 8192 65536 16777216
-net.ipv4.udp_wmem_min = 16384
 net.core.wmem_default = 262144
-net.core.wmem_max = 16777216
+net.core.rmem_max = 8388608
+net.core.wmem_max = 8388608
+net.core.optmem_max = 8388608
 
-# Increase number of incoming connections
-net.core.somaxconn = 32768
-
-# Increase number of incoming connections backlog
-net.core.netdev_max_backlog = 16384
-net.core.dev_weight = 64
-
-# Increase the maximum amount of option memory buffers
-net.core.optmem_max = 65535
-
-# Increase the tcp-time-wait buckets pool size to prevent simple DOS attacks
-net.ipv4.tcp_max_tw_buckets = 1440000
-
-# try to reuse time-wait connections, but dont recycle them (recycle can break clients behind NAT)
-net.ipv4.tcp_tw_recycle = 0
+# Time wait config
+net.ipv4.tcp_max_tw_buckets = 1048576
 net.ipv4.tcp_tw_reuse = 1
 
-# Limit number of orphans, each orphan can eat up to 16M (max wmem) of unswappable memory
-net.ipv4.tcp_max_orphans = 16384
-net.ipv4.tcp_orphan_retries = 0
+# Backlogs
+net.core.netdev_max_backlog = 524284
+net.core.somaxconn = 65535
+net.unix.max_dgram_qlen = 1024
+
+# SYN config
+net.ipv4.tcp_syncookies = 1
+net.ipv4.tcp_syn_retries = 5
+net.ipv4.tcp_synack_retries = 5
+net.ipv4.tcp_max_syn_backlog = 65535
+
+# Enable timestamps as defined in RFC1323: 
+net.ipv4.tcp_timestamps = 1 
+
+# Protect Against TCP Time-Wait 
+net.ipv4.tcp_rfc1337 = 1
 
 # Limit the maximum memory used to reassemble IP fragments (CVE-2018-5391)
+# Default: ipfrag_low_thresh=3145728, ipfrag_high_thresh=4194304
 net.ipv4.ipfrag_low_thresh = 196608
 net.ipv6.ip6frag_low_thresh = 196608
 net.ipv4.ipfrag_high_thresh = 262144
 net.ipv6.ip6frag_high_thresh = 262144
 
-# dont cache ssthresh from previous connection
-net.ipv4.tcp_no_metrics_save = 1
-net.ipv4.tcp_moderate_rcvbuf = 1
-
-# Increase size of RPC datagram queue length
-net.unix.max_dgram_qlen = 50
-
-# Dont allow the arp table to become bigger than this
-net.ipv4.neigh.default.gc_thresh3 = 2048
-
-# Tell the gc when to become aggressive with arp table cleaning.
-# Adjust this based on size of the LAN. 1024 is suitable for most /24 networks
-net.ipv4.neigh.default.gc_thresh2 = 1024
-
-# Adjust where the gc will leave arp table alone - set to 32.
-net.ipv4.neigh.default.gc_thresh1 = 32
-
-# Adjust to arp table gc to clean-up more often
-net.ipv4.neigh.default.gc_interval = 30
-
-# Increase TCP queue length
-net.ipv4.neigh.default.proxy_qlen = 96
-net.ipv4.neigh.default.unres_qlen = 6
-
-# Enable Explicit Congestion Notification (RFC 3168), disable it if it doesnt work for you
-net.ipv4.tcp_ecn = 1
-net.ipv4.tcp_reordering = 3
-
-# How many times to retry killing an alive TCP connection
-net.ipv4.tcp_retries2 = 15
-net.ipv4.tcp_retries1 = 3
-
-# Avoid falling back to slow start after a connection goes idle
-# keeps our cwnd large with the keep alive connections (kernel > 3.6)
+# Enabling fast open and disabling slow start
 net.ipv4.tcp_slow_start_after_idle = 0
-
-# Allow the TCP fastopen flag to be used, beware some firewalls do not like TFO! (kernel > 3.7)
 net.ipv4.tcp_fastopen = 3
+
+# Orphans
+net.ipv4.tcp_max_orphans = 16384
+net.ipv4.tcp_orphan_retries = 3
+
+# Increasing GC threshold.
+# Defaults: 128/512/1024
+net.ipv6.neigh.default.gc_thresh1 = 1024
+net.ipv6.neigh.default.gc_thresh2 = 4096
+net.ipv6.neigh.default.gc_thresh3 = 8192
 
 # This will enusre that immediatly subsequent connections use the new values
 net.ipv4.route.flush = 1
 net.ipv6.route.flush = 1
 
-# MTU probing (jumbo frames)
-net.ipv4.tcp_mtu_probing=1
 EOF'; \
 						sudo sysctl -p"
+			fi
+			
+			# If ulimit should be configured.
+			if ${CONFIGURE_ULIMIT}
+			then
+				# Configures prometheus.
+				${DEBUG} && echo "Configuring /etc/security/limits.conf in agent node ${MASTER_IP}"
+				ssh -oStrictHostKeyChecking=no -i ~/.ssh/aws_dcos_cluster_key \
+					centos@${MASTER_IP} \
+					"sudo rm -f /etc/security/limits.d/20-nproc.conf; \
+						sudo bash -c 'cat << 'EOF' > /etc/security/limits.conf
+
+# /etc/security/limits.conf
+#
+#This file sets the resource limits for the users logged in via PAM.
+#It does not affect resource limits of the system services.
+#
+#Also note that configuration files in /etc/security/limits.d directory,
+#which are read in alphabetical order, override the settings in this
+#file in case the domain is the same or more specific.
+#That means for example that setting a limit for wildcard domain here
+#can be overriden with a wildcard setting in a config file in the
+#subdirectory, but a user specific setting here can be overriden only
+#with a user specific setting in the subdirectory.
+#
+#Each line describes a limit for a user in the form:
+#
+#<domain>        <type>  <item>  <value>
+#
+#Where:
+#<domain> can be:
+#        - a user name
+#        - a group name, with @group syntax
+#        - the wildcard *, for default entry
+#        - the wildcard %, can be also used with %group syntax,
+#                 for maxlogin limit
+#
+#<type> can have the two values:
+#        - soft for enforcing the soft limits
+#        - hard for enforcing hard limits
+#
+#<item> can be one of the following:
+#        - core - limits the core file size (KB)
+#        - data - max data size (KB)
+#        - fsize - maximum filesize (KB)
+#        - memlock - max locked-in-memory address space (KB)
+#        - nofile - max number of open file descriptors
+#        - rss - max resident set size (KB)
+#        - stack - max stack size (KB)
+#        - cpu - max CPU time (MIN)
+#        - nproc - max number of processes
+#        - as - address space limit (KB)
+#        - maxlogins - max number of logins for this user
+#        - maxsyslogins - max number of logins on the system
+#        - priority - the priority to run user process with
+#        - locks - max number of file locks the user can hold
+#        - sigpending - max number of pending signals
+#        - msgqueue - max memory used by POSIX message queues (bytes)
+#        - nice - max nice priority allowed to raise to values: [-20, 19]
+#        - rtprio - max realtime priority
+#
+#<domain>      <type>  <item>         <value>
+#
+
+#*               soft    core            0
+#*               hard    rss             10000
+#@student        hard    nproc           20
+#@faculty        soft    nproc           20
+#@faculty        hard    nproc           50
+#ftp             hard    nproc           0
+#@student        -       maxlogins       4
+
+*          soft    nproc     32768
+*          hard    nproc     65536
+root       soft    nproc     unlimited
+root       hard    nproc     unlimited
+
+*          soft    nofile     65536
+*          hard    nofile     131072
+
+EOF'" 
 			fi
 			
 			# If zone and region should be updated.
