@@ -24,7 +24,7 @@ RUN apt-get update -y && \
 	rm -rf /var/lib/apt/lists/*
 	
 # Installs the operational scripts.
-ENV OPS_UTILS_VERSION=0.0.28
+ENV OPS_UTILS_VERSION=0.0.29
 RUN mvn dependency:get -Dartifact=org.coldis.library:script-operational:${OPS_UTILS_VERSION} && \
 	mkdir -p /opt/operational-utils-script && \
 	cd /opt/operational-utils-script && \
