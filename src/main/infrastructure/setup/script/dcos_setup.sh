@@ -283,6 +283,9 @@ then
 	do
 	
 		${DEBUG} && echo "AGENT_INSTANCE=${AGENT_INSTANCE}"
+		AGENT_INSTANCE_NAME=`aws ec2 describe-instances --region ${AWS_DEFAULT_REGION} --instance-id ${AGENT_INSTANCE} | grep -A 1 "\"Key\": \"Name\""`
+		AGENT_INSTANCE_NAME=`echo ${AGENT_INSTANCE_NAME} | sed -e "s/.*dcos/dcos/g" -e "s/\"$//"`
+		${DEBUG} && echo "AGENT_INSTANCE_NAME=${AGENT_INSTANCE_NAME}"
 		AGENT_INSTANCE_AZ=`aws ec2 describe-instances --region ${AWS_DEFAULT_REGION} --instance-id ${AGENT_INSTANCE} \
 		--query 'Reservations[0].Instances[0].Placement.AvailabilityZone'`
 		AGENT_INSTANCE_AZ=${AGENT_INSTANCE_AZ//\"}
@@ -427,7 +430,7 @@ then
 			then
 			
 				# Mesos attributes.
-				MESOS_ATTRIBUTES="region:${AWS_DEFAULT_REGION};zone:${AGENT_INSTANCE_AZ}"
+				MESOS_ATTRIBUTES="region:${AWS_DEFAULT_REGION};zone:${AGENT_INSTANCE_AZ};node:${AGENT_INSTANCE_NAME}"
 				if ${PUBLIC_AGENT}
 				then
 					MESOS_ATTRIBUTES="${MESOS_ATTRIBUTES};public_ip:true"
