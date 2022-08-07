@@ -499,17 +499,19 @@ vm.dirty_ratio = 29
 vm.vfs_cache_pressure = 79
 
 # Increasing max memory areas
-vm.max_map_count = 1966080
+vm.max_map_count = 4194304
 
 # Increase system file descriptor limit
-kernel.pid_max = 1048576
-fs.file-max = 1048576
+fs.file-max = 16777216
 fs.aio-max-nr = 524288
-fs.nr_open = 1048576
+fs.nr_open = 16777216
+
+# Huge pages.
+vm.nr_hugepages=32768
 
 # Increasing messaging
-kernel.msgmnb = 131072
-kernel.msgmax = 131072
+kernel.msgmnb = 524288
+kernel.msgmax = 524288
 
 # Decrease the time default value for connections to keep alive
 net.ipv4.tcp_keepalive_time = 3600
@@ -666,7 +668,7 @@ root       soft    nproc     unlimited
 root       hard    nproc     unlimited
 
 *          soft    nofile     65536
-*          hard    nofile     131072
+*          hard    nofile     524288
 
 EOF'"
 			fi
@@ -859,17 +861,19 @@ vm.dirty_ratio = 29
 vm.vfs_cache_pressure = 79
 
 # Increasing max memory areas
-vm.max_map_count = 1966080
+vm.max_map_count = 4194304
 
 # Increase system file descriptor limit
-kernel.pid_max = 1048576
-fs.file-max = 1048576
+fs.file-max = 16777216
 fs.aio-max-nr = 524288
-fs.nr_open = 1048576
+fs.nr_open = 16777216
+
+# Huge pages.
+vm.nr_hugepages=32768
 
 # Increasing messaging
-kernel.msgmnb = 131072
-kernel.msgmax = 131072
+kernel.msgmnb = 524288
+kernel.msgmax = 524288
 
 # Decrease the time default value for connections to keep alive
 net.ipv4.tcp_keepalive_time = 3600
@@ -1026,7 +1030,7 @@ root       soft    nproc     unlimited
 root       hard    nproc     unlimited
 
 *          soft    nofile     65536
-*          hard    nofile     131072
+*          hard    nofile     524288
 
 EOF'" 
 			fi
