@@ -1,5 +1,5 @@
 # From debian.
-FROM debian:10.5
+FROM debian:11.5
 
 # Sets locale and UTF-8 charset.
 ENV TZ=America/Sao_Paulo
@@ -24,7 +24,7 @@ RUN apt-get update -y && \
 	rm -rf /var/lib/apt/lists/*
 	
 # Installs the operational scripts.
-ENV OPS_UTILS_VERSION=1.0.7
+ENV OPS_UTILS_VERSION=1.0.11
 RUN mvn dependency:get -Dartifact=org.coldis.library:script-operational:${OPS_UTILS_VERSION} && \
 	mkdir -p /opt/operational-utils-script && \
 	cd /opt/operational-utils-script && \

@@ -50,7 +50,7 @@ RUN apk -v --update --no-cache add \
 	./aws/install && \
 	rm awscliv2.zip && \
 	aws --version && \
-	apk -v --purge del curl unzip && \
+	apk -v --purge del unzip && \
 	rm /var/cache/apk/*
 	
 # Installs envsubst.

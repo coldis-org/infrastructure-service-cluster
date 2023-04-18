@@ -10,6 +10,7 @@ DEBUG_OPT=
 RUN_TERRAFORM=true
 CPU_HARD_LIMIT=false
 UPDATE_ZONE_REGION=false
+UPDATE_MESOS_ATTRIBUTES_FROM_TAGS=false
 DO_NOT_UPDATE_SWAP=true
 MASTERS_SWAP=16000
 AGENTS_SWAP=32000
@@ -103,6 +104,11 @@ while :; do
 		# If zone and region should be updated.
 		--update-zone-region)
 			UPDATE_ZONE_REGION=true
+			;;
+			
+		# If mesos attributes should be updated.
+		--update-mesos-attributes)
+			UPDATE_MESOS_ATTRIBUTES_FROM_TAGS=true
 			;;
 
 		# If agents should restart.
@@ -244,8 +250,8 @@ then
 	AGENT_INSTANCES=`sed -n -e '/private-agents-instances = \[/,/\]/p' dcos_setup.log | 
 		sed -e 's/private-agents-instances = \[//' -e 's/\]//' -e 's/"//g'`
 	AGENT_INSTANCES="${AGENT_INSTANCES},
-	`sed -n -e '/public-agents-instances = \[/,/\]/p' dcos_setup.log | 
-		sed -e 's/public-agents-instances = \[//' -e 's/\]//' -e 's/"//g'`"
+	$(sed -n -e '/public-agents-instances = \[/,/\]/p' dcos_setup.log | 
+		sed -e 's/public-agents-instances = \[//' -e 's/\]//' -e 's/\"//g')"
 	AGENT_INSTANCES=`echo ${AGENT_INSTANCES} | sed -e 's/ //g' -e 's/,/\\,/g' -e 's/"//g'`	
 	MASTERS_IPS=`sed -n -e '/masters-ips = \[/,/\]/p' dcos_setup.log | 
 		sed -e 's/masters-ips = \[//' -e 's/\]//' `
@@ -463,7 +469,56 @@ then
 					centos@${AGENT_IP} "cat ${AGENT_CONFIGURATION_FILE}"
 					
 			fi
-		
+			
+			# If Mesos attributes should be updated.
+			if ${UPDATE_MESOS_ATTRIBUTES_FROM_TAGS}
+			then
+			
+				# Variables
+				GROUP=
+				GROUP_KEY=
+				NODE_NAME=
+				UPDATE_GROUP_TAG="Update-mesos-attributes"
+				REGION="us-east-1"
+				PLACEMENT_PREFIX="placement-"
+				HOSTNAME=$(hostname)
+				INSTANCES_PLACEMENT=$(aws ec2 describe-instances --filters Name=tag-key,Values=$UPDATE_GROUP_TAG --query "Reservations[].Instances[].PrivateDnsName" --output text)
+				${DEBUG} && echo "Instance placement: $INSTANCES_PLACEMENT"
+				
+				# Checks if current instance and who have the tag enable match
+				for INSTANCE in $INSTANCES_PLACEMENT; do 
+					if [ "$INSTANCE" = "$HOSTNAME" ];
+					then
+						# Get instance tag keys
+						INSTANCE_TAGS=$(aws ec2 describe-instances --filters Name=private-dns-name,Values=${HOSTNAME} --query "Reservations[].Instances[].Tags[].Key[]" --output text)
+						# Get node name if exist
+						NODE_NAME=$(aws ec2 describe-instances --filters Name=private-dns-name,Values=${HOSTNAME} --query "Reservations[].Instances[].Tags[?Key=='Name'].Value[]" --output text)
+						[ ! -z "$NODE_NAME" ] && NODE_NAME=$(echo "node:$NODE_NAME;" | tr '[:upper:]' '[:lower:]')
+						${DEBUG} && echo "Instance Key Tags: $INSTANCE_TAGS"
+						${DEBUG} && echo "Instance Node Name: $NODE_NAME"
+						for INSTANCE_TAG in $INSTANCE_TAGS; do
+							if echo $INSTANCE_TAG | tr '[:upper:]' '[:lower:]' | grep -s "^$PLACEMENT_PREFIX";
+							then
+								TAG_VALUE=$(aws ec2 describe-instances --filters Name=private-dns-name,Values=${HOSTNAME} --query "Reservations[].Instances[].Tags[?Key=='$INSTANCE_TAG'].Value[]" --output text)
+								GROUP_KEY=$(echo $INSTANCE_TAG| tr '[:upper:]' '[:lower:]' | sed -e "s/$PLACEMENT_PREFIX//")
+								GROUP="$GROUP_KEY:$TAG_VALUE;$GROUP"
+							fi
+						done
+						GROUP=$(echo $GROUP | tr '[:upper:]' '[:lower:]')
+						${DEBUG} && echo "Groups: $GROUP"
+						sudo tee "/var/lib/dcos/mesos-slave-common" > /dev/null << EOF
+MESOS_CGROUPS_ENABLE_CFS=false
+MESOS_ATTRIBUTES=region:$REGION;$NODE_NAME$GROUP
+EOF
+						sudo systemctl restart dcos-mesos-slave.service
+					else
+						echo "Update Tag: $UPDATE_GROUP_TAG not found"
+					fi
+				done	
+						
+			fi
+			
+			
 			# If AWS URL is still not blocked.
 			${DEBUG} && echo "ssh -oStrictHostKeyChecking=no -i ~/.ssh/aws_dcos_cluster_key \
 				centos@${AGENT_IP} \
@@ -500,24 +555,25 @@ vm.vfs_cache_pressure = 79
 
 # Increasing max memory areas
 vm.max_map_count = 4194304
+#vm.max_map_count = 1048576
 
 # Increase system file descriptor limit
 fs.file-max = 16777216
-fs.aio-max-nr = 524288
+fs.aio-max-nr = 2097152
 fs.nr_open = 16777216
 
 # Huge pages.
-vm.nr_hugepages=32768
+vm.nr_hugepages=0
 
 # Increasing messaging
 kernel.msgmnb = 524288
 kernel.msgmax = 524288
 
 # Decrease the time default value for connections to keep alive
-net.ipv4.tcp_keepalive_time = 3600
-net.ipv4.tcp_keepalive_intvl = 20
-net.ipv4.tcp_keepalive_probes = 10
-net.ipv4.tcp_fin_timeout = 17
+net.ipv4.tcp_keepalive_time = 300
+net.ipv4.tcp_keepalive_intvl = 19
+net.ipv4.tcp_keepalive_probes = 5
+net.ipv4.tcp_retries2 = 7
 
 # Increase allowed local port range
 net.ipv4.ip_local_port_range = 1024 65535
@@ -532,43 +588,46 @@ net.ipv4.tcp_notsent_lowat = 16384
 # Turn on the tcp_window_scaling and Jumbo frames
 net.ipv4.tcp_window_scaling = 1
 net.ipv4.tcp_mtu_probing = 1
+net.nf_conntrack_max = 262144
 
 # Increase socket buffers
-net.ipv4.tcp_rmem = 4096 87380 4194304
-net.ipv4.tcp_wmem = 4096 65536 4194304
+net.ipv4.tcp_rmem = 4096 87380 9437184
+net.ipv4.tcp_wmem = 4096 87380 9437184
 net.core.rmem_default = 262144
 net.core.wmem_default = 262144
-net.core.rmem_max = 8388608
-net.core.wmem_max = 8388608
-net.core.optmem_max = 8388608
-
-# Time wait config
-net.ipv4.tcp_max_tw_buckets = 1048576
-net.ipv4.tcp_tw_reuse = 1
+net.core.rmem_max = 12582912
+net.core.wmem_max = 12582912
+net.core.optmem_max = 12582912
 
 # Backlogs
 net.core.netdev_max_backlog = 524284
-net.core.somaxconn = 65535
+net.core.somaxconn = 524284
 net.unix.max_dgram_qlen = 1024
 
-# SYN config
+# Time-wait, fin and syn
+net.ipv4.tcp_max_tw_buckets = 1048576
+net.ipv4.tcp_tw_recycle = 1
+net.ipv4.tcp_tw_reuse = 1
+net.ipv4.tcp_fin_timeout = 23
 net.ipv4.tcp_syncookies = 1
-net.ipv4.tcp_syn_retries = 5
-net.ipv4.tcp_synack_retries = 5
-net.ipv4.tcp_max_syn_backlog = 65535
+net.ipv4.tcp_syn_retries = 3
+net.ipv4.tcp_synack_retries = 3
+net.ipv4.tcp_max_syn_backlog = 524280
 
-# Enable timestamps as defined in RFC1323: 
-net.ipv4.tcp_timestamps = 1 
-
-# Protect Against TCP Time-Wait 
+# Enable timestamps and time-wait protection
+net.ipv4.tcp_timestamps = 0
 net.ipv4.tcp_rfc1337 = 1
+
+# Disables sack and dsack
+net.ipv4.tcp_dsack = 0
+net.ipv4.tcp_fack = 0
 
 # Limit the maximum memory used to reassemble IP fragments (CVE-2018-5391)
 # Default: ipfrag_low_thresh=3145728, ipfrag_high_thresh=4194304
-net.ipv4.ipfrag_low_thresh = 196608
-net.ipv6.ip6frag_low_thresh = 196608
-net.ipv4.ipfrag_high_thresh = 262144
-net.ipv6.ip6frag_high_thresh = 262144
+net.ipv4.ipfrag_low_thresh = 393216
+net.ipv6.ip6frag_low_thresh = 393216
+net.ipv4.ipfrag_high_thresh = 524288
+net.ipv6.ip6frag_high_thresh = 524288
 
 # Enabling fast open and disabling slow start
 net.ipv4.tcp_slow_start_after_idle = 0
@@ -755,6 +814,9 @@ EOF'; \
 	
 fi
 
+
+
+
 # If masters should be configured.
 if ${CONFIGURE_MASTERS}
 then
@@ -862,24 +924,25 @@ vm.vfs_cache_pressure = 79
 
 # Increasing max memory areas
 vm.max_map_count = 4194304
+#vm.max_map_count = 1048576
 
 # Increase system file descriptor limit
 fs.file-max = 16777216
-fs.aio-max-nr = 524288
+fs.aio-max-nr = 2097152
 fs.nr_open = 16777216
 
 # Huge pages.
-vm.nr_hugepages=32768
+vm.nr_hugepages=0
 
 # Increasing messaging
 kernel.msgmnb = 524288
 kernel.msgmax = 524288
 
 # Decrease the time default value for connections to keep alive
-net.ipv4.tcp_keepalive_time = 3600
-net.ipv4.tcp_keepalive_intvl = 20
-net.ipv4.tcp_keepalive_probes = 10
-net.ipv4.tcp_fin_timeout = 17
+net.ipv4.tcp_keepalive_time = 300
+net.ipv4.tcp_keepalive_intvl = 19
+net.ipv4.tcp_keepalive_probes = 5
+net.ipv4.tcp_retries2 = 7
 
 # Increase allowed local port range
 net.ipv4.ip_local_port_range = 1024 65535
@@ -894,43 +957,46 @@ net.ipv4.tcp_notsent_lowat = 16384
 # Turn on the tcp_window_scaling and Jumbo frames
 net.ipv4.tcp_window_scaling = 1
 net.ipv4.tcp_mtu_probing = 1
+net.nf_conntrack_max = 262144
 
 # Increase socket buffers
-net.ipv4.tcp_rmem = 4096 87380 4194304
-net.ipv4.tcp_wmem = 4096 65536 4194304
+net.ipv4.tcp_rmem = 4096 87380 9437184
+net.ipv4.tcp_wmem = 4096 87380 9437184
 net.core.rmem_default = 262144
 net.core.wmem_default = 262144
-net.core.rmem_max = 8388608
-net.core.wmem_max = 8388608
-net.core.optmem_max = 8388608
-
-# Time wait config
-net.ipv4.tcp_max_tw_buckets = 1048576
-net.ipv4.tcp_tw_reuse = 1
+net.core.rmem_max = 12582912
+net.core.wmem_max = 12582912
+net.core.optmem_max = 12582912
 
 # Backlogs
 net.core.netdev_max_backlog = 524284
-net.core.somaxconn = 65535
+net.core.somaxconn = 524284
 net.unix.max_dgram_qlen = 1024
 
-# SYN config
+# Time-wait, fin and syn
+net.ipv4.tcp_max_tw_buckets = 1048576
+net.ipv4.tcp_tw_recycle = 1
+net.ipv4.tcp_tw_reuse = 1
+net.ipv4.tcp_fin_timeout = 23
 net.ipv4.tcp_syncookies = 1
-net.ipv4.tcp_syn_retries = 5
-net.ipv4.tcp_synack_retries = 5
-net.ipv4.tcp_max_syn_backlog = 65535
+net.ipv4.tcp_syn_retries = 3
+net.ipv4.tcp_synack_retries = 3
+net.ipv4.tcp_max_syn_backlog = 524280
 
-# Enable timestamps as defined in RFC1323: 
-net.ipv4.tcp_timestamps = 1 
-
-# Protect Against TCP Time-Wait 
+# Enable timestamps and time-wait protection
+net.ipv4.tcp_timestamps = 0
 net.ipv4.tcp_rfc1337 = 1
+
+# Disables sack and dsack
+net.ipv4.tcp_dsack = 0
+net.ipv4.tcp_fack = 0
 
 # Limit the maximum memory used to reassemble IP fragments (CVE-2018-5391)
 # Default: ipfrag_low_thresh=3145728, ipfrag_high_thresh=4194304
-net.ipv4.ipfrag_low_thresh = 196608
-net.ipv6.ip6frag_low_thresh = 196608
-net.ipv4.ipfrag_high_thresh = 262144
-net.ipv6.ip6frag_high_thresh = 262144
+net.ipv4.ipfrag_low_thresh = 393216
+net.ipv6.ip6frag_low_thresh = 393216
+net.ipv4.ipfrag_high_thresh = 524288
+net.ipv6.ip6frag_high_thresh = 524288
 
 # Enabling fast open and disabling slow start
 net.ipv4.tcp_slow_start_after_idle = 0
