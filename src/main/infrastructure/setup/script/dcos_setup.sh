@@ -453,7 +453,7 @@ then
 			then
 			
 				# Mesos attributes.
-				MESOS_ATTRIBUTES="region:${AWS_DEFAULT_REGION};zone:${AGENT_INSTANCE_AZ}"
+				MESOS_ATTRIBUTES="region:${AWS_DEFAULT_REGION};zone:${AGENT_INSTANCE_AZ};node:${AGENT_INSTANCE_NAME}"
 				if ${PUBLIC_AGENT}
 				then
 					MESOS_ATTRIBUTES="${MESOS_ATTRIBUTES};public_ip:true"
