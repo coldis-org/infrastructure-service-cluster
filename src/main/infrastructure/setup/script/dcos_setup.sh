@@ -4,7 +4,7 @@
 set -o errexit
 #set -o pipefail
 
-# Default paramentes.
+# Default parameters.
 DEBUG=false
 DEBUG_OPT=
 RUN_TERRAFORM=true
@@ -31,6 +31,8 @@ UPDATE=false
 APPLY=false
 DESTROY=false
 DESTROY_CONFIRM=false
+UPDATE_GROUP_TAG="Update-mesos-attributes"
+PLACEMENT_PREFIX="placement-"
 
 # For each parameter.
 while :; do
@@ -300,6 +302,27 @@ then
 		--query 'Reservations[0].Instances[0].PublicIpAddress'`
 		AGENT_IP=${AGENT_IP//\"}
 		${DEBUG} && echo "AGENT_IP=${AGENT_IP}"
+
+		# Get placement tags
+		USE_PLACEMENT_TAGS=false
+		INSTANCE_TAGS=$(aws ec2 describe-instances --region ${AWS_DEFAULT_REGION} --instance-id ${AGENT_INSTANCE} \
+		--query "Reservations[].Instances[].Tags[].Key[]" --output text)
+		${DEBUG} && echo "INSTANCE_TAGS=${INSTANCE_TAGS}"
+		if echo ${INSTANCE_TAGS} | grep -w ${UPDATE_GROUP_TAG};
+		then
+			USE_PLACEMENT_TAGS=true
+			for INSTANCE_TAG in $INSTANCE_TAGS; do
+            	if echo $INSTANCE_TAG | tr '[:upper:]' '[:lower:]' | grep -s "^$PLACEMENT_PREFIX";
+            	then
+                	TAG_VALUE=$(aws ec2 describe-instances --region ${AWS_DEFAULT_REGION} --instance-id ${AGENT_INSTANCE} \
+					--query "Reservations[].Instances[].Tags[?Key=='$INSTANCE_TAG'].Value[]" --output text)
+                	GROUP_KEY=$(echo $INSTANCE_TAG| tr '[:upper:]' '[:lower:]' | sed -e "s/$PLACEMENT_PREFIX//")
+                	GROUP="$GROUP_KEY:$TAG_VALUE;$GROUP"
+            	fi
+			done
+			GROUP=$(echo $GROUP | tr '[:upper:]' '[:lower:]')
+        	${DEBUG} && echo "Groups: $GROUP"
+		fi
 		
 		if (ssh -oStrictHostKeyChecking=no -i ~/.ssh/aws_dcos_cluster_key \
 			centos@${AGENT_IP} "ls" || false)
@@ -441,7 +464,13 @@ then
 				then
 					MESOS_ATTRIBUTES="${MESOS_ATTRIBUTES};public_ip:true"
 				fi
-				
+
+				# If should use attributes from tags
+				if ${USE_PLACEMENT_TAGS}
+				then
+					MESOS_ATTRIBUTES="region:${AWS_DEFAULT_REGION};node:${AGENT_INSTANCE_NAME};${GROUP}"
+				fi
+
 				# If the mesos attributes are already set.
 				${DEBUG} && echo "sudo cat ${AGENT_CONFIGURATION_FILE} | grep \"MESOS_ATTRIBUTES\""
 				if ssh -oStrictHostKeyChecking=no -i ~/.ssh/aws_dcos_cluster_key \
