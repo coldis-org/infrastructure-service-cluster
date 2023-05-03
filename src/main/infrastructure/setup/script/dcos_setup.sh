@@ -588,7 +588,7 @@ net.ipv4.tcp_notsent_lowat = 16384
 # Turn on the tcp_window_scaling and Jumbo frames
 net.ipv4.tcp_window_scaling = 1
 net.ipv4.tcp_mtu_probing = 1
-net.nf_conntrack_max = 262144
+net.nf_conntrack_max = 1048568
 
 # Increase socket buffers
 net.ipv4.tcp_rmem = 4096 87380 9437184
@@ -600,8 +600,8 @@ net.core.wmem_max = 12582912
 net.core.optmem_max = 12582912
 
 # Backlogs
-net.core.netdev_max_backlog = 2097136
-net.core.somaxconn = 2097136
+net.core.netdev_max_backlog = 1048568
+net.core.somaxconn = 65535
 net.unix.max_dgram_qlen = 1024
 
 # Time-wait, fin and syn
@@ -957,7 +957,7 @@ net.ipv4.tcp_notsent_lowat = 16384
 # Turn on the tcp_window_scaling and Jumbo frames
 net.ipv4.tcp_window_scaling = 1
 net.ipv4.tcp_mtu_probing = 1
-net.nf_conntrack_max = 262144
+net.nf_conntrack_max = 1048568
 
 # Increase socket buffers
 net.ipv4.tcp_rmem = 4096 87380 9437184
@@ -969,8 +969,8 @@ net.core.wmem_max = 12582912
 net.core.optmem_max = 12582912
 
 # Backlogs
-net.core.netdev_max_backlog = 2097136
-net.core.somaxconn = 2097136
+net.core.netdev_max_backlog = 1048568
+net.core.somaxconn = 65535
 net.unix.max_dgram_qlen = 1024
 
 # Time-wait, fin and syn
