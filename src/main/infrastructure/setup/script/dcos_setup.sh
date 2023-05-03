@@ -600,8 +600,8 @@ net.core.wmem_max = 12582912
 net.core.optmem_max = 12582912
 
 # Backlogs
-net.core.netdev_max_backlog = 524284
-net.core.somaxconn = 524284
+net.core.netdev_max_backlog = 2097136
+net.core.somaxconn = 2097136
 net.unix.max_dgram_qlen = 1024
 
 # Time-wait, fin and syn
@@ -969,8 +969,8 @@ net.core.wmem_max = 12582912
 net.core.optmem_max = 12582912
 
 # Backlogs
-net.core.netdev_max_backlog = 524284
-net.core.somaxconn = 524284
+net.core.netdev_max_backlog = 2097136
+net.core.somaxconn = 2097136
 net.unix.max_dgram_qlen = 1024
 
 # Time-wait, fin and syn
