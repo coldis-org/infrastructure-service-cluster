@@ -305,23 +305,27 @@ then
 
 		# Get placement tags
 		USE_PLACEMENT_TAGS=false
-		INSTANCE_TAGS=$(aws ec2 describe-instances --region ${AWS_DEFAULT_REGION} --instance-id ${AGENT_INSTANCE} \
-		--query "Reservations[].Instances[].Tags[].Key[]" --output text)
-		${DEBUG} && echo "INSTANCE_TAGS=${INSTANCE_TAGS}"
-		if echo ${INSTANCE_TAGS} | grep -w ${UPDATE_GROUP_TAG};
+		if ${UPDATE_MESOS_ATTRIBUTES_FROM_TAGS}
 		then
-			USE_PLACEMENT_TAGS=true
-			for INSTANCE_TAG in $INSTANCE_TAGS; do
-            	if echo $INSTANCE_TAG | tr '[:upper:]' '[:lower:]' | grep -s "^$PLACEMENT_PREFIX";
-            	then
-                	TAG_VALUE=$(aws ec2 describe-instances --region ${AWS_DEFAULT_REGION} --instance-id ${AGENT_INSTANCE} \
-					--query "Reservations[].Instances[].Tags[?Key=='$INSTANCE_TAG'].Value[]" --output text)
-                	GROUP_KEY=$(echo $INSTANCE_TAG| tr '[:upper:]' '[:lower:]' | sed -e "s/$PLACEMENT_PREFIX//")
-                	GROUP="$GROUP_KEY:$TAG_VALUE;$GROUP"
-            	fi
-			done
-			GROUP=$(echo $GROUP | tr '[:upper:]' '[:lower:]')
-        	${DEBUG} && echo "Groups: $GROUP"
+			GROUP=
+			INSTANCE_TAGS=$(aws ec2 describe-instances --region ${AWS_DEFAULT_REGION} --instance-id ${AGENT_INSTANCE} \
+			--query "Reservations[].Instances[].Tags[].Key[]" --output text)
+			${DEBUG} && echo "INSTANCE_TAGS=${INSTANCE_TAGS}"
+			if echo ${INSTANCE_TAGS} | grep -w ${UPDATE_GROUP_TAG};
+			then
+				USE_PLACEMENT_TAGS=true
+				for INSTANCE_TAG in $INSTANCE_TAGS; do
+					if echo $INSTANCE_TAG | tr '[:upper:]' '[:lower:]' | grep -s "^$PLACEMENT_PREFIX";
+					then
+						TAG_VALUE=$(aws ec2 describe-instances --region ${AWS_DEFAULT_REGION} --instance-id ${AGENT_INSTANCE} \
+						--query "Reservations[].Instances[].Tags[?Key=='$INSTANCE_TAG'].Value[]" --output text)
+						GROUP_KEY=$(echo $INSTANCE_TAG| tr '[:upper:]' '[:lower:]' | sed -e "s/$PLACEMENT_PREFIX//")
+						GROUP="$GROUP_KEY:$TAG_VALUE;$GROUP"
+					fi
+				done
+				GROUP=$(echo $GROUP | tr '[:upper:]' '[:lower:]')
+				${DEBUG} && echo "Groups: $GROUP"
+			fi
 		fi
 		
 		if (ssh -oStrictHostKeyChecking=no -i ~/.ssh/aws_dcos_cluster_key \
@@ -498,55 +502,6 @@ then
 					centos@${AGENT_IP} "cat ${AGENT_CONFIGURATION_FILE}"
 					
 			fi
-			
-			# If Mesos attributes should be updated.
-			if ${UPDATE_MESOS_ATTRIBUTES_FROM_TAGS}
-			then
-			
-				# Variables
-				GROUP=
-				GROUP_KEY=
-				NODE_NAME=
-				UPDATE_GROUP_TAG="Update-mesos-attributes"
-				REGION="us-east-1"
-				PLACEMENT_PREFIX="placement-"
-				HOSTNAME=$(hostname)
-				INSTANCES_PLACEMENT=$(aws ec2 describe-instances --filters Name=tag-key,Values=$UPDATE_GROUP_TAG --query "Reservations[].Instances[].PrivateDnsName" --output text)
-				${DEBUG} && echo "Instance placement: $INSTANCES_PLACEMENT"
-				
-				# Checks if current instance and who have the tag enable match
-				for INSTANCE in $INSTANCES_PLACEMENT; do 
-					if [ "$INSTANCE" = "$HOSTNAME" ];
-					then
-						# Get instance tag keys
-						INSTANCE_TAGS=$(aws ec2 describe-instances --filters Name=private-dns-name,Values=${HOSTNAME} --query "Reservations[].Instances[].Tags[].Key[]" --output text)
-						# Get node name if exist
-						NODE_NAME=$(aws ec2 describe-instances --filters Name=private-dns-name,Values=${HOSTNAME} --query "Reservations[].Instances[].Tags[?Key=='Name'].Value[]" --output text)
-						[ ! -z "$NODE_NAME" ] && NODE_NAME=$(echo "node:$NODE_NAME;" | tr '[:upper:]' '[:lower:]')
-						${DEBUG} && echo "Instance Key Tags: $INSTANCE_TAGS"
-						${DEBUG} && echo "Instance Node Name: $NODE_NAME"
-						for INSTANCE_TAG in $INSTANCE_TAGS; do
-							if echo $INSTANCE_TAG | tr '[:upper:]' '[:lower:]' | grep -s "^$PLACEMENT_PREFIX";
-							then
-								TAG_VALUE=$(aws ec2 describe-instances --filters Name=private-dns-name,Values=${HOSTNAME} --query "Reservations[].Instances[].Tags[?Key=='$INSTANCE_TAG'].Value[]" --output text)
-								GROUP_KEY=$(echo $INSTANCE_TAG| tr '[:upper:]' '[:lower:]' | sed -e "s/$PLACEMENT_PREFIX//")
-								GROUP="$GROUP_KEY:$TAG_VALUE;$GROUP"
-							fi
-						done
-						GROUP=$(echo $GROUP | tr '[:upper:]' '[:lower:]')
-						${DEBUG} && echo "Groups: $GROUP"
-						sudo tee "/var/lib/dcos/mesos-slave-common" > /dev/null << EOF
-MESOS_CGROUPS_ENABLE_CFS=false
-MESOS_ATTRIBUTES=region:$REGION;$NODE_NAME$GROUP
-EOF
-						sudo systemctl restart dcos-mesos-slave.service
-					else
-						echo "Update Tag: $UPDATE_GROUP_TAG not found"
-					fi
-				done	
-						
-			fi
-			
 			
 			# If AWS URL is still not blocked.
 			${DEBUG} && echo "ssh -oStrictHostKeyChecking=no -i ~/.ssh/aws_dcos_cluster_key \
