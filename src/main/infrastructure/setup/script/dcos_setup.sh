@@ -532,24 +532,30 @@ then
 						(sudo /sbin/modprobe tcp_bbr || true) && \
 						sudo bash -c 'cat << 'EOF' > /etc/sysctl.conf
 # Do less swapping
-vm.swappiness = 37
-vm.dirty_background_ratio = 17
-vm.dirty_ratio = 29
+vm.swappiness = 23
+vm.dirty_background_ratio = 5
+vm.dirty_ratio = 10
+vm.dirty_background_bytes=67108864
+vm.dirty_bytes=536870912
 vm.vfs_cache_pressure = 79
+vm.overcommit_ratio = 29
 
 # Increasing max memory areas
-vm.max_map_count = 4194304
+vm.max_map_count = 2097152
 #vm.max_map_count = 1048576
 
 # Increase system file descriptor limit
-fs.file-max = 16777216
-fs.aio-max-nr = 2097152
+fs.file-max = 312139770
+fs.aio-max-nr = 1048576
 fs.nr_open = 16777216
 
-# Huge pages.
-vm.nr_hugepages=0
+# Huge pages
+vm.nr_hugepages=65536
 
-# Increasing messaging
+# Tuning kernel
+kernel.sem = 250 256000 100 4096
+kernel.shmmax = 18446744073692700000
+kernel.shmall = 18446744073692700000
 kernel.msgmnb = 524288
 kernel.msgmax = 524288
 
@@ -901,24 +907,30 @@ then
 						(sudo /sbin/modprobe tcp_bbr || true) && \
 						sudo bash -c 'cat << 'EOF' > /etc/sysctl.conf
 # Do less swapping
-vm.swappiness = 37
-vm.dirty_background_ratio = 17
-vm.dirty_ratio = 29
+vm.swappiness = 23
+vm.dirty_background_ratio = 5
+vm.dirty_ratio = 10
+vm.dirty_background_bytes=67108864
+vm.dirty_bytes=536870912
 vm.vfs_cache_pressure = 79
+vm.overcommit_ratio = 29
 
 # Increasing max memory areas
-vm.max_map_count = 4194304
+vm.max_map_count = 2097152
 #vm.max_map_count = 1048576
 
 # Increase system file descriptor limit
-fs.file-max = 16777216
-fs.aio-max-nr = 2097152
+fs.file-max = 312139770
+fs.aio-max-nr = 1048576
 fs.nr_open = 16777216
 
-# Huge pages.
-vm.nr_hugepages=0
+# Huge pages
+vm.nr_hugepages=65536
 
-# Increasing messaging
+# Tuning kernel
+kernel.sem = 250 256000 100 4096
+kernel.shmmax = 18446744073692700000
+kernel.shmall = 18446744073692700000
 kernel.msgmnb = 524288
 kernel.msgmax = 524288
 
