@@ -541,7 +541,7 @@ vm.vfs_cache_pressure = 79
 vm.overcommit_ratio = 29
 
 # Increasing max memory areas
-vm.max_map_count = 2097152
+vm.max_map_count = 8388608
 #vm.max_map_count = 1048576
 
 # Increase system file descriptor limit
@@ -916,7 +916,7 @@ vm.vfs_cache_pressure = 79
 vm.overcommit_ratio = 29
 
 # Increasing max memory areas
-vm.max_map_count = 2097152
+vm.max_map_count = 8388608
 #vm.max_map_count = 1048576
 
 # Increase system file descriptor limit
