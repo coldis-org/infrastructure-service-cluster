@@ -33,6 +33,7 @@ DESTROY=false
 DESTROY_CONFIRM=false
 UPDATE_GROUP_TAG="Update-mesos-attributes"
 PLACEMENT_PREFIX="placement-"
+PAGE_FACTOR=20
 
 # For each parameter.
 while :; do
@@ -524,6 +525,10 @@ then
 			# If sysctl should be configured.
 			if ${CONFIGURE_SYSCTL}
 			then
+				TOTAL_MEM=$(awk '/MemTotal/ {print $2}' /proc/meminfo)
+				HUGE_PAGE_SIZE=$(echo | awk "{ printf (\"%.f\", $TOTAL_MEM * 0.$PAGE_FACTOR) }")
+				${DEBUG} && echo "TOTAL_MEM=$TOTAL_MEM"
+				${DEBUG} && echo "HUGE_PAGE_SIZE=$HUGE_PAGE_SIZE"
 				# Configures prometheus.
 				${DEBUG} && echo "Configuring sysctl.conf in agent node ${AGENT_IP}"
 				ssh -oStrictHostKeyChecking=no -i ~/.ssh/aws_dcos_cluster_key \
@@ -547,7 +552,7 @@ fs.aio-max-nr = 2097152
 fs.nr_open = 16777216
 
 # Huge pages.
-vm.nr_hugepages=0
+vm.nr_hugepages=$HUGE_PAGE_SIZE
 
 # Increasing messaging
 kernel.msgmnb = 524288
@@ -893,6 +898,10 @@ then
 			# If sysctl should be configured.
 			if ${CONFIGURE_SYSCTL}
 			then
+				TOTAL_MEM=$(awk '/MemTotal/ {print $2}' /proc/meminfo)
+				HUGE_PAGE_SIZE=$(echo | awk "{ printf (\"%.f\", $TOTAL_MEM * 0.$PAGE_FACTOR) }")
+				${DEBUG} && echo "TOTAL_MEM=$TOTAL_MEM"
+				${DEBUG} && echo "HUGE_PAGE_SIZE=$HUGE_PAGE_SIZE"
 				# Configures prometheus.
 				${DEBUG} && echo "Configuring sysctl.conf in agent node ${MASTER_IP}"
 				ssh -oStrictHostKeyChecking=no -i ~/.ssh/aws_dcos_cluster_key \
@@ -916,7 +925,7 @@ fs.aio-max-nr = 2097152
 fs.nr_open = 16777216
 
 # Huge pages.
-vm.nr_hugepages=0
+vm.nr_hugepages=$HUGE_PAGE_SIZE
 
 # Increasing messaging
 kernel.msgmnb = 524288
