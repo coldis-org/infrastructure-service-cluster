@@ -33,7 +33,7 @@ DESTROY=false
 DESTROY_CONFIRM=false
 UPDATE_GROUP_TAG="Update-mesos-attributes"
 PLACEMENT_PREFIX="placement-"
-PAGE_FACTOR=20
+PAGE_FACTOR=50
 
 # For each parameter.
 while :; do
@@ -526,6 +526,7 @@ then
 			if ${CONFIGURE_SYSCTL}
 			then
 				TOTAL_MEM=$(awk '/MemTotal/ {print $2}' /proc/meminfo)
+				TOTAL_MEM=$(echo | awk "{ printf (\"%.f\", $TOTAL_MEM / 1024) }")
 				HUGE_PAGE_SIZE=$(echo | awk "{ printf (\"%.f\", $TOTAL_MEM * 0.$PAGE_FACTOR) }")
 				${DEBUG} && echo "TOTAL_MEM=$TOTAL_MEM"
 				${DEBUG} && echo "HUGE_PAGE_SIZE=$HUGE_PAGE_SIZE"
@@ -905,6 +906,7 @@ then
 			if ${CONFIGURE_SYSCTL}
 			then
 				TOTAL_MEM=$(awk '/MemTotal/ {print $2}' /proc/meminfo)
+				TOTAL_MEM=$(echo | awk "{ printf (\"%.f\", $TOTAL_MEM / 1024) }")
 				HUGE_PAGE_SIZE=$(echo | awk "{ printf (\"%.f\", $TOTAL_MEM * 0.$PAGE_FACTOR) }")
 				${DEBUG} && echo "TOTAL_MEM=$TOTAL_MEM"
 				${DEBUG} && echo "HUGE_PAGE_SIZE=$HUGE_PAGE_SIZE"
