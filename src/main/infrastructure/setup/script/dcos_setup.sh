@@ -33,7 +33,7 @@ DESTROY=false
 DESTROY_CONFIRM=false
 UPDATE_GROUP_TAG="Update-mesos-attributes"
 PLACEMENT_PREFIX="placement-"
-PAGE_FACTOR=50
+PAGE_FACTOR=67
 
 # For each parameter.
 while :; do
