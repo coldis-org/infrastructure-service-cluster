@@ -560,6 +560,9 @@ vm.max_map_count = 8388608
 fs.file-max = 312139770
 fs.aio-max-nr = 1048576
 fs.nr_open = 16777216
+fs.mqueue.queues_max=256
+fs.mqueue.msgsize_max=8192
+fs.mqueue.msg_max=32767
 
 # Huge pages.
 vm.nr_hugepages=$HUGE_PAGE_SIZE
@@ -939,7 +942,9 @@ vm.max_map_count = 8388608
 # Increase system file descriptor limit
 fs.file-max = 312139770
 fs.aio-max-nr = 1048576
-fs.nr_open = 16777216
+fs.mqueue.queues_max=256
+fs.mqueue.msgsize_max=8192
+fs.mqueue.msg_max=32767
 
 # Huge pages.
 vm.nr_hugepages=$HUGE_PAGE_SIZE
