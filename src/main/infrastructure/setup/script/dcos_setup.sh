@@ -33,7 +33,7 @@ DESTROY=false
 DESTROY_CONFIRM=false
 UPDATE_GROUP_TAG="Update-mesos-attributes"
 PLACEMENT_PREFIX="placement-"
-PAGE_FACTOR=67
+HUGE_PAGES_PERCENTAGE=67
 
 # For each parameter.
 while :; do
@@ -81,6 +81,12 @@ while :; do
 		# Agents swap.
 		--agents-swap)
 			AGENTS_SWAP=${2}
+			shift
+			;;
+
+		# Huge pages.			
+		--huge-pages)
+			HUGE_PAGES_PERCENTAGE=${2}
 			shift
 			;;
 
@@ -528,7 +534,7 @@ then
 					# Define private instances huge pages
 					TOTAL_MEM=$(awk '/MemTotal/ {print $2}' /proc/meminfo)
 					TOTAL_MEM=$(echo | awk "{ printf (\"%.f\", $TOTAL_MEM / 1024) }")
-					HUGE_PAGE_SIZE=$(echo | awk "{ printf (\"%.f\", $TOTAL_MEM * 0.$PAGE_FACTOR) }")
+					HUGE_PAGE_SIZE=$(echo | awk "{ printf (\"%.f\", $TOTAL_MEM * 0.$HUGE_PAGES_PERCENTAGE) }")
 					# No huge pages for public instances
 					if ${PUBLIC_AGENT}
 					then
@@ -916,7 +922,7 @@ then
 			then
 				TOTAL_MEM=$(awk '/MemTotal/ {print $2}' /proc/meminfo)
 				TOTAL_MEM=$(echo | awk "{ printf (\"%.f\", $TOTAL_MEM / 1024) }")
-				HUGE_PAGE_SIZE=$(echo | awk "{ printf (\"%.f\", $TOTAL_MEM * 0.$PAGE_FACTOR) }")
+				HUGE_PAGE_SIZE=$(echo | awk "{ printf (\"%.f\", $TOTAL_MEM * 0.$HUGE_PAGES_PERCENTAGE) }")
 				${DEBUG} && echo "TOTAL_MEM=$TOTAL_MEM"
 				${DEBUG} && echo "HUGE_PAGE_SIZE=$HUGE_PAGE_SIZE"
 				# Configures prometheus.
