@@ -14,6 +14,7 @@ UPDATE_MESOS_ATTRIBUTES_FROM_TAGS=false
 DO_NOT_UPDATE_SWAP=true
 MASTERS_SWAP=16000
 AGENTS_SWAP=32000
+CONFIGURE_NVME_MAPPING=false
 CONFIGURE_ULIMIT=false
 CONFIGURE_SYSCTL=false
 CONFIGURE_PROMETHEUS=false
@@ -92,6 +93,11 @@ while :; do
 		# If Prometheus should be configured.
 		--configure-prometheus)
 			CONFIGURE_PROMETHEUS=true
+			;;
+
+		# If NVME config should be configured
+		--configure-nvme)
+			CONFIGURE_NVME_MAPPING=true
 			;;
 
 		# If ulimit should be configured.
@@ -773,7 +779,36 @@ EOF'; \
 						sudo systemctl start node-exporter; \
 						sudo systemctl status node-exporter;" || true
 			fi
-		
+
+			# Configure to use newer instances
+			if ${CONFIGURE_NVME_MAPPING}
+			then
+				if [ $INSTANCE_AZ = "us-east-1c" ]
+				then
+					# To use newer ec2 instances
+					sudo yum install -y nvme-cli
+					sudo bash -c 'cat << 'EOF' >> /etc/udev/rules.d/999-aws-ebs-nvme.rules
+# /etc/udev/rules.d/999-aws-ebs-nvme.rules
+# ebs nvme devices
+KERNEL=="nvme[0-9]*n[0-9]*", ENV{DEVTYPE}=="disk", ATTRS{model}=="Amazon Elastic Block Store", PROGRAM="/usr/local/bin/ebs-nvme-mapping /dev/%k", SYMLINK+="%c"
+EOF'
+
+					sudo bash -c 'cat << 'EOF' >> /usr/local/bin/ebs-nvme-mapping
+#!/bin/bash
+# /usr/local/bin/ebs-nvme-mapping
+vol=$(/usr/sbin/nvme id-ctrl --raw-binary "$1" | cut -c3073-3104 | tr -s " " | sed "s/ $//g")
+vol=${vol#/dev/}
+if [[ -n "$vol" ]]; then
+  echo ${vol/xvd/sd} ${vol/sd/xvd}
+fi
+EOF'
+					sudo chmod u+x /usr/local/bin/ebs-nvme-mapping
+					sudo udevadm control --reload-rules && udevadm trigger
+				else
+					echo "Not applying to this region yet - $INSTANCE_AZ"
+				fi
+			fi
+
 			# If agents should restart.
 			if ${RESTART_AGENTS}
 			then
