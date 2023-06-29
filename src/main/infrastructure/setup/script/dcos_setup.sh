@@ -34,7 +34,7 @@ DESTROY=false
 DESTROY_CONFIRM=false
 UPDATE_GROUP_TAG="Update-mesos-attributes"
 PLACEMENT_PREFIX="placement-"
-HUGE_PAGES_PERCENTAGE=67
+HUGE_PAGES_PERCENTAGE=0
 
 # For each parameter.
 while :; do
@@ -789,29 +789,15 @@ EOF'; \
 			# Configure to use newer instances
 			if ${CONFIGURE_NVME_MAPPING}
 			then
-				if [ $INSTANCE_AZ = "us-east-1c" ]
+				if [ ${AGENT_INSTANCE_AZ} = "us-east-1a" ]
 				then
 					# To use newer ec2 instances
-					sudo yum install -y nvme-cli
-					sudo bash -c 'cat << 'EOF' >> /etc/udev/rules.d/999-aws-ebs-nvme.rules
-# /etc/udev/rules.d/999-aws-ebs-nvme.rules
-# ebs nvme devices
-KERNEL=="nvme[0-9]*n[0-9]*", ENV{DEVTYPE}=="disk", ATTRS{model}=="Amazon Elastic Block Store", PROGRAM="/usr/local/bin/ebs-nvme-mapping /dev/%k", SYMLINK+="%c"
-EOF'
-
-					sudo bash -c 'cat << 'EOF' >> /usr/local/bin/ebs-nvme-mapping
-#!/bin/bash
-# /usr/local/bin/ebs-nvme-mapping
-vol=$(/usr/sbin/nvme id-ctrl --raw-binary "$1" | cut -c3073-3104 | tr -s " " | sed "s/ $//g")
-vol=${vol#/dev/}
-if [[ -n "$vol" ]]; then
-  echo ${vol/xvd/sd} ${vol/sd/xvd}
-fi
-EOF'
-					sudo chmod u+x /usr/local/bin/ebs-nvme-mapping
-					sudo udevadm control --reload-rules && udevadm trigger
+					NVME_CMD=$(base64 /opt/dcos-script/dcos_setup_nvme.sh)
+					echo ${NVME_CMD} | ssh -oStrictHostKeyChecking=no -i ~/.ssh/aws_dcos_cluster_key \
+					centos@${AGENT_IP} " base64 -d | sudo bash"
+					
 				else
-					echo "Not applying to this region yet - $INSTANCE_AZ"
+					echo "Not applying to this region yet - ${AGENT_INSTANCE_AZ}"
 				fi
 			fi
 
