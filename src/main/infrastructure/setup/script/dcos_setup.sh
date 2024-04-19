@@ -12,8 +12,8 @@ CPU_HARD_LIMIT=false
 UPDATE_ZONE_REGION=false
 UPDATE_MESOS_ATTRIBUTES_FROM_TAGS=false
 DO_NOT_UPDATE_SWAP=true
-MASTERS_SWAP=16000
-AGENTS_SWAP=32000
+MASTERS_SWAP=0
+AGENTS_SWAP=0
 CONFIGURE_NVME_MAPPING=false
 CONFIGURE_ULIMIT=false
 CONFIGURE_SYSCTL=false
@@ -372,27 +372,50 @@ then
 			${YUM_NOT_UPDATE} || \
 			ssh -oStrictHostKeyChecking=no -i ~/.ssh/aws_dcos_cluster_key \
 			centos@${AGENT_IP} \
-			"sudo yum update -y"
+			"
+                echo "sudo yum update -y --exclude=docker* --exclude=container*" && \
+                sudo yum update -y --exclude=docker* --exclude=container*
+            "
 		
-			# Configures the swap.
-			${DEBUG} && echo "Configuring swap for agent ${AGENT_IP}"
-			${DO_NOT_UPDATE_SWAP} || \
-			ssh -oStrictHostKeyChecking=no -i ~/.ssh/aws_dcos_cluster_key \
-			centos@${AGENT_IP} \
-			"( ( sudo swapon -s | grep /swapfile ) ) || \
-				( \
-					sudo swapoff -v /swapfile || true && \
-					sudo rm -f /swapfile && \
-					sudo dd if=/dev/zero of=/swapfile count=${AGENTS_SWAP} bs=1MiB && \
-					sudo chmod 600 /swapfile && \
-					sudo mkswap /swapfile && \
-					sudo swapon /swapfile && \
-					( \
-						( ${DEBUG} && sudo cat /etc/fstab ) &&
-						( sudo cat /etc/fstab | grep /swapfile ) || \
-						( echo \"/swapfile swap swap sw 0 0\" | sudo tee -a /etc/fstab ) \
-					)
-				)"
+            # Configures the swap.
+            ${DEBUG} && echo "Configuring swap for agent ${AGENT_IP}"
+            if ! ${DO_NOT_UPDATE_SWAP}
+            then
+                if [ ! -z "${AGENTS_SWAP}" ] && [ "${AGENTS_SWAP}" -gt "0" ]
+                then
+                
+                   ssh -oStrictHostKeyChecking=no -i ~/.ssh/aws_dcos_cluster_key \
+                   centos@${AGENT_IP} \
+                   "( ( sudo swapon -s | grep /swapfile ) ) || \
+                       ( \
+                           ( sudo swapoff -v /swapfile || true ) && \
+                           sudo rm -f /swapfile && \
+                           sudo dd if=/dev/zero of=/swapfile count=${AGENTS_SWAP} bs=1MiB && \
+                           sudo chmod 600 /swapfile && \
+                           sudo mkswap /swapfile && \
+                           sudo swapon /swapfile && \
+                           ( \
+                               ( ${DEBUG} && sudo cat /etc/fstab ) &&
+                               ( sudo cat /etc/fstab | grep /swapfile ) || \
+                               ( echo \"/swapfile swap swap sw 0 0\" | sudo tee -a /etc/fstab ) \
+                           )
+                       )"
+
+                else 
+               
+                   ssh -oStrictHostKeyChecking=no -i ~/.ssh/aws_dcos_cluster_key \
+                   centos@${AGENT_IP} \
+                   "
+                       sudo swapoff -a && \
+                       sudo rm -f /swapfile && \
+                       sudo cp -f /etc/fstab /etc/fstab.swap.bkp 
+                       sudo sed '/swapfile/d' /etc/fstab | sudo tee /etc/fstab
+                   "
+                
+                fi
+           
+            fi
+			
 			
 			# If docker should be configured.
 			if ${CONFIGURE_DOCKER}
@@ -674,31 +697,54 @@ then
 		then
 		
 			# Yum update.
-			${DEBUG} && echo "Updating yum for agent ${MASTER_IP}"
+			${DEBUG} && echo "Updating yum for master ${MASTER_IP}"
 			${YUM_NOT_UPDATE} || \
 			ssh -oStrictHostKeyChecking=no -i ~/.ssh/aws_dcos_cluster_key \
 			centos@${MASTER_IP} \
-			"sudo yum update -y"
+            "
+                echo "sudo yum update -y --exclude=docker* --exclude=container*" && \
+                sudo yum update -y --exclude=docker* --exclude=container*
+            "
 
-			# Configures the swap.
-			${DEBUG} && echo "Configuring swap for master ${MASTER_IP}"
-			${DO_NOT_UPDATE_SWAP} || \
-			ssh -oStrictHostKeyChecking=no -i ~/.ssh/aws_dcos_cluster_key \
-			centos@${MASTER_IP} \
-			"( ( sudo swapon -s | grep \"/swapfile\" ) ) || \
-				( \
-					sudo swapoff -v /swapfile || true && \
-					sudo rm -f /swapfile && \
-					sudo dd if=/dev/zero of=/swapfile count=${MASTERS_SWAP} bs=1MiB && \
-					sudo chmod 600 /swapfile && \
-					sudo mkswap /swapfile && \
-					sudo swapon /swapfile && \
-					( \
-						( ${DEBUG} && sudo cat /etc/fstab ) &&
-						( sudo cat /etc/fstab | grep /swapfile ) || \
-						( echo \"/swapfile swap swap sw 0 0\" | sudo tee -a /etc/fstab ) \
-					) \
-				)"
+            # Configures the swap.
+            ${DEBUG} && echo "Configuring swap for master ${MASTER_IP}"
+            if ! ${DO_NOT_UPDATE_SWAP}
+            then
+                if [ ! -z "${MASTERS_SWAP}" ] && [ "${MASTERS_SWAP}" -gt "0" ]
+                then
+                
+                   ssh -oStrictHostKeyChecking=no -i ~/.ssh/aws_dcos_cluster_key \
+                   centos@${MASTER_IP} \
+                   "( ( sudo swapon -s | grep /swapfile ) ) || \
+                       ( \
+                           ( sudo swapoff -v /swapfile || true ) && \
+                           sudo rm -f /swapfile && \
+                           sudo dd if=/dev/zero of=/swapfile count=${MASTERS_SWAP} bs=1MiB && \
+                           sudo chmod 600 /swapfile && \
+                           sudo mkswap /swapfile && \
+                           sudo swapon /swapfile && \
+                           ( \
+                               ( ${DEBUG} && sudo cat /etc/fstab ) &&
+                               ( sudo cat /etc/fstab | grep /swapfile ) || \
+                               ( echo \"/swapfile swap swap sw 0 0\" | sudo tee -a /etc/fstab ) \
+                           )
+                       )"
+
+                else 
+                
+                   ssh -oStrictHostKeyChecking=no -i ~/.ssh/aws_dcos_cluster_key \
+                   centos@${MASTER_IP} \
+                   "
+                       sudo swapoff -a && \
+                       sudo rm -f /swapfile && \
+                       sudo cp -f /etc/fstab /etc/fstab.swap.bkp 
+                       sudo sed '/swapfile/d' /etc/fstab | sudo tee /etc/fstab
+                   "
+               
+                fi
+           
+            fi
+			
 				
 			# If docker should be configured.
 			if ${CONFIGURE_DOCKER}
